@@ -1,0 +1,2008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NJ UPR Calculator — Multi-Section</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #14171a;
+    --panel: #1b1f24;
+    --panel-raised: #20252b;
+    --line: #2c3138;
+    --chalk: #eae7da;
+    --chalk-dim: #9aa0a6;
+    --gold: #c9a227;
+    --gold-dim: #8a7320;
+    --turf: #3c6b42;
+    --turf-bright: #5a9663;
+    --red: #b5483f;
+    --cut-line: #c9a227;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--chalk);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{ max-width:1180px; margin:0 auto; padding:28px 20px 80px; }
+
+  /* Header */
+  .masthead{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:3px solid var(--gold);
+    padding-bottom:14px; margin-bottom:6px; flex-wrap:wrap; gap:10px;
+  }
+  .masthead h1{
+    font-family:'Oswald', sans-serif;
+    font-weight:700;
+    font-size:34px;
+    letter-spacing:0.5px;
+    margin:0;
+    text-transform:uppercase;
+  }
+  .masthead h1 span{ color:var(--gold); }
+  .masthead .sub{
+    font-family:'IBM Plex Mono', monospace;
+    color:var(--chalk-dim);
+    font-size:13px;
+  }
+  .scope-badge{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    color:var(--turf-bright);
+    border:1px solid var(--turf);
+    padding:5px 10px;
+    border-radius:3px;
+    white-space:nowrap;
+  }
+
+  /* Tabs */
+  .tabs{ display:flex; gap:4px; margin:22px 0 18px; border-bottom:1px solid var(--line); }
+  .tab{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    font-size:14px;
+    letter-spacing:0.5px;
+    padding:10px 18px;
+    cursor:pointer;
+    color:var(--chalk-dim);
+    border:none;
+    background:none;
+    border-bottom:3px solid transparent;
+  }
+  .tab.active{ color:var(--chalk); border-bottom-color:var(--gold); }
+  .tab:hover:not(.active){ color:var(--chalk); }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:20px;
+    margin-bottom:18px;
+  }
+  .panel h2{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    font-size:16px;
+    letter-spacing:0.5px;
+    margin:0 0 4px;
+    color:var(--chalk);
+  }
+  .panel .hint{
+    color:var(--chalk-dim);
+    font-size:12.5px;
+    margin:0 0 16px;
+    line-height:1.5;
+  }
+
+  /* Forms */
+  .form-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+  .field{ display:flex; flex-direction:column; gap:4px; }
+  .field label{ font-size:11px; color:var(--chalk-dim); text-transform:uppercase; letter-spacing:0.4px; }
+  input, select{
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--chalk);
+    padding:8px 10px;
+    border-radius:4px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:13px;
+  }
+  input:focus, select:focus{ outline:none; border-color:var(--gold); }
+  input[type="text"]{ width:180px; }
+  input[type="number"]{ width:90px; }
+  select{ width:140px; }
+  button{
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    font-size:13px;
+    background:var(--turf);
+    color:var(--chalk);
+    border:none;
+    padding:9px 16px;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  button:hover{ background:var(--turf-bright); }
+  button.ghost{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--chalk-dim);
+  }
+  button.ghost:hover{ color:var(--chalk); border-color:var(--chalk-dim); }
+  button.danger{ background:transparent; border:1px solid var(--red); color:var(--red); padding:5px 9px; font-size:11px; }
+  button.danger:hover{ background:var(--red); color:var(--chalk); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{
+    text-align:left;
+    font-family:'Oswald', sans-serif;
+    text-transform:uppercase;
+    font-size:11px;
+    letter-spacing:0.4px;
+    color:var(--chalk-dim);
+    padding:8px 10px;
+    border-bottom:1px solid var(--line);
+  }
+  td{ padding:8px 10px; border-bottom:1px solid #232830; font-family:'IBM Plex Mono', monospace; }
+  tr:last-child td{ border-bottom:none; }
+  .num{ text-align:right; }
+  .center{ text-align:center; }
+
+  .cat-pill{
+    display:inline-block;
+    font-size:10.5px;
+    padding:2px 7px;
+    border-radius:10px;
+    font-family:'IBM Plex Mono', monospace;
+  }
+  .cat-A{ background:#4a2e1a; color:#e0a868; }
+  .cat-B{ background:#3a2a4a; color:#c9a0e8; }
+  .cat-C{ background:#1a3a4a; color:#7ec8e8; }
+  .cat-D{ background:#3a1a1a; color:#e08080; }
+  .cat-none{ color:var(--chalk-dim); }
+
+  /* Results */
+  .results-table tr.qualify{ background:rgba(60,107,66,0.12); }
+  .results-table tr.cutline td{ border-bottom:2px dashed var(--cut-line); }
+  .rank-num{
+    font-family:'Oswald', sans-serif;
+    font-weight:600;
+    font-size:15px;
+    color:var(--gold);
+  }
+  .team-name{ font-family:'Inter',sans-serif; font-weight:600; color:var(--chalk); }
+  .jump-tag{
+    font-size:10px;
+    color:var(--turf-bright);
+    font-family:'IBM Plex Mono', monospace;
+    margin-left:6px;
+  }
+  .tie-flag{
+    font-size:10px;
+    color:var(--red);
+    border:1px solid var(--red);
+    padding:1px 5px;
+    border-radius:3px;
+    margin-left:6px;
+  }
+  .tb-tag{
+    font-size:10px;
+    color:#7ec8e8;
+    border:1px solid #2f5a6e;
+    padding:1px 5px;
+    border-radius:3px;
+    margin-left:6px;
+    cursor:help;
+  }
+
+  .legend{ display:flex; gap:18px; flex-wrap:wrap; font-size:11.5px; color:var(--chalk-dim); margin-top:10px; }
+  .legend span.dot{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+
+  .empty{ color:var(--chalk-dim); font-size:13px; padding:20px 0; text-align:center; font-style:italic; }
+
+  ::-webkit-scrollbar{ height:8px; width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+
+  .table-scroll{ overflow-x:auto; }
+  @media (max-width:700px){
+    .masthead h1{ font-size:24px; }
+    input[type="text"]{ width:130px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="toast" style="display:none; position:fixed; bottom:20px; right:20px; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); padding:10px 16px; border-radius:6px; font-size:13px; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
+
+  <div class="masthead">
+    <div>
+      <h1>UPR <span>Calculator</span></h1>
+      <div class="sub">United Power Ranking — prototype engine</div>
+    </div>
+    <div class="scope-badge" id="scopeBadge">Statewide · All Groups</div>
+    <div id="adminControl" style="display:flex; align-items:center; gap:6px; margin-left:10px; flex-wrap:wrap;">
+      <input type="email" id="adminEmailInput" placeholder="Admin email" style="width:150px; padding:6px 8px; font-size:12px;">
+      <input type="password" id="adminPasswordInput" placeholder="Password" style="width:110px; padding:6px 8px; font-size:12px;" onkeydown="if(event.key==='Enter') submitAdminLogin();">
+      <button class="ghost" onclick="submitAdminLogin()">Login</button>
+      <span id="adminError" style="color:var(--red); font-size:11px; display:none;"></span>
+    </div>
+  </div>
+  <div id="adminBar" style="display:none; justify-content:flex-end; margin-bottom:10px;">
+    <span style="font-size:12px; color:var(--turf-bright); margin-right:10px;">● Admin mode is ON</span>
+    <button class="ghost" onclick="logoutAdmin()">Log out</button>
+  </div>
+
+  <div id="siteMessageBanner" style="display:none;"></div>
+  <div id="siteMessageEditor" style="display:none;"></div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="teams">Teams</button>
+    <button class="tab" data-tab="games">Games</button>
+    <button class="tab" data-tab="predict">Predict</button>
+    <button class="tab" data-tab="results">Rankings</button>
+    <button class="tab" data-tab="detail">Team Detail</button>
+  </div>
+
+  <div id="tab-teams" class="tabview"></div>
+  <div id="tab-games" class="tabview" style="display:none;"></div>
+  <div id="tab-predict" class="tabview" style="display:none;"></div>
+  <div id="tab-results" class="tabview" style="display:none;"></div>
+  <div id="tab-detail" class="tabview" style="display:none;"></div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://wmnjvhfhpinrvnpxmpfk.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_oGd-IeZtvQke0OsVWWV5FA_3w4cb20O';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
+<script>
+/* ============================== DATA MODEL ============================== */
+
+const MULTIPLIER_PCT = { A: 0.80, B: 0.75, C: 0.70, D: 0.70 };
+
+let state = {
+  teams: [],   // {id, name, category: 'A'|'B'|'C'|'D'|null, region:'North'|'South', group: '1'-'5'}
+  games: []    // {id, week, teamA, teamB, scoreA, scoreB} — scoreA/scoreB are null for TBD/未played games
+};
+let predictions = {}; // personal, per-viewer: { [gameId]: winningTeamId } — backed by the predictions table
+const PREDICTION_MARGIN = 21; // assumed margin for a predicted winner, per decision
+let coinFlipResolutions = {}; // shared/official: { [tieGroupKey]: winningTeamId } — backed by coin_flips table
+let siteMessage = ''; // admin-set public announcement, backed by site_message table
+
+let dataLoaded = false;
+let nextTeamId = 1;
+let nextGameId = 1;
+let selectedDetailTeam = null;
+let selectedSection = null; // {region, group} string key, set on first render
+let isAdmin = false;
+let currentSession = null; // Supabase auth session (anonymous visitor or logged-in admin)
+let gamesFilterWeek = 'all';
+let gamesFilterSection = 'all';
+let gamesFilterEligibility = 'all';
+let predictFilterWeek = 'all';
+let predictFilterSection = 'all';
+let predictFilterEligibility = 'all';
+
+async function submitAdminLogin(){
+  const emailEl = document.getElementById('adminEmailInput');
+  const pwEl = document.getElementById('adminPasswordInput');
+  const errEl = document.getElementById('adminError');
+  errEl.style.display = 'none';
+  const { data, error } = await sb.auth.signInWithPassword({ email: emailEl.value.trim(), password: pwEl.value });
+  if (error){
+    errEl.textContent = 'Login failed: ' + error.message;
+    errEl.style.display = 'inline';
+    return;
+  }
+  currentSession = data.session;
+  const admin = await checkIsAdmin();
+  if (!admin){
+    errEl.textContent = "That account isn't on the admins list.";
+    errEl.style.display = 'inline';
+    await sb.auth.signOut();
+    await ensureSession();
+    return;
+  }
+  pwEl.value = '';
+  document.getElementById('adminControl').style.display = 'none';
+  document.getElementById('adminBar').style.display = 'flex';
+  await loadAllData();
+}
+async function logoutAdmin(){
+  isAdmin = false;
+  await sb.auth.signOut();
+  await ensureSession();
+  document.getElementById('adminControl').style.display = 'flex';
+  document.getElementById('adminBar').style.display = 'none';
+  await loadAllData();
+}
+
+// Ensures there's always an active Supabase session — a real admin login if one
+// exists, otherwise a fresh anonymous session so visitors can still make private
+// predictions without creating an account.
+async function ensureSession(){
+  const { data } = await sb.auth.getSession();
+  if (data.session){
+    currentSession = data.session;
+    return;
+  }
+  const { data: anonData, error } = await sb.auth.signInAnonymously();
+  if (error){ console.error('Anonymous sign-in failed', error); return; }
+  currentSession = anonData.session;
+}
+async function checkIsAdmin(){
+  if (!currentSession || !currentSession.user || !currentSession.user.email){ isAdmin = false; return false; }
+  const { data, error } = await sb.from('admins').select('email').eq('email', currentSession.user.email).maybeSingle();
+  isAdmin = !error && !!data;
+  return isAdmin;
+}
+
+function uid(prefix){ return prefix + (prefix==='t'? nextTeamId++ : nextGameId++); }
+
+function sectionKey(region, group){
+  if (group === 'NPA' || group === 'NPB') return group;
+  if (group === 'OOS') return 'OOS';
+  return region + '|' + group;
+}
+function sectionLabel(region, group){
+  if (group === 'NPA') return 'Non-Public A';
+  if (group === 'NPB') return 'Non-Public B';
+  if (group === 'OOS') return 'Out-of-State / Non-Member';
+  return region + ', Group ' + group;
+}
+
+function seedStatewideData(){
+  // Non-public multiplier categories (used for OSI bonus calc), independent of which
+  // Non-Public group (A/B) a school plays in.
+  const CATEGORY = {
+    "Bergen Catholic":"A", "DePaul":"A", "Don Bosco Prep":"A", "St. Joseph (Mont.)":"A", "St. Peter's Prep":"A",
+    "Delbarton":"B", "Paramus Catholic":"B", "Red Bank Catholic":"B", "St. Joseph (Met.)":"B",
+    "Pope John":"C", "St. Augustine":"C", "Seton Hall Prep":"C",
+    "Donovan Catholic":"D", "Holy Spirit":"D", "St. John Vianney":"D", "St. Thomas Aquinas":"D"
+  };
+
+  function addTeams(region, group, names){
+    names.forEach(n => state.teams.push({
+      id: uid('t'), name: n, category: CATEGORY[n] || null, region, group, startSI: 60, ineligible: false
+    }));
+  }
+
+  addTeams('North','1',["Belvidere","Bogota","Boonton","Butler","Cedar Grove","Brearley","Dunellen",
+    "Glen Ridge","Hasbrouck Heights","Hawthorne","Hopatcong","Kinnelon","Kittatinny","Lenape Valley",
+    "Mountain Lakes","New Milford","New Providence","North Arlington","North Warren","Park Ridge",
+    "Pompton Lakes","Roselle Park","Saddle Brook","Secaucus","Verona","Wallington","Wallkill Valley",
+    "Weehawken","Whippany Park","Wood-Ridge"]);
+
+  addTeams('South','1',["Schalick","Asbury Park","Audubon","Bound Brook","Buena","Burlington City",
+    "Clayton","Florence","Gateway","Glassboro","Haddon Township","Highland Park","Keansburg",
+    "Keyport / Henry Hudson","KIPP Cooper Norcross","Manville","Maple Shade","Middlesex","New Egypt",
+    "Palmyra","Paulsboro","Penns Grove","Pennsville","Pitman","Point Pleasant Beach","Riverside",
+    "Salem","Shore","South Hunterdon","Wildwood","Woodbury","Woodstown"]);
+
+  addTeams('North','2',["Bernards","Cresskill / Emerson","Dumont","Elmwood Park","Glen Rock",
+    "Hackettstown","Hanover Park","Becton","High Point","Hoboken","Indian Hills","Caldwell","Jefferson",
+    "Dayton","Lakeland","Lodi","Lyndhurst","Madison","Mahwah","Shabazz","Manchester Regional",
+    "Newark Collegiate","Newton","Parsippany","Pascack Hills","Pequannock","Ramsey","Rutherford",
+    "Sussex Tech","Vernon","Waldwick / Midland Park","Westwood"]);
+
+  addTeams('South','2',["Roselle","Johnson","Bordentown","Camden","Collingswood","Delaware Valley",
+    "Delran","Camden Eastside","Gloucester","Gov. Livingston","Haddon Heights","Haddonfield","Hillside",
+    "Lindenwold","Lower Cape May","Manasquan","Manchester Township","Mastery Camden","Metuchen",
+    "Middle Township","Monmouth","Overbrook","Point Pleasant Boro","Raritan","Rumson-Fair Haven",
+    "South River","Spotswood","Sterling","Voorhees","Wall","West Deptford","Willingboro"]);
+
+  addTeams('North','3',["Carteret","Cranford","Dwight-Morrow","Fort Lee","Snyder","Lincoln","Montville",
+    "Morris Hills","North Plainfield","Demarest","Old Tappan","Paramus","Parsippany Hills",
+    "Pascack Valley","Passaic Valley","Ridgefield Park","River Dell","Roxbury","South Plainfield",
+    "Sparta","Summit","Tenafly","Warren Hills","Wayne Hills","Weequahic","West Essex","West Milford",
+    "West Morris","Mendham","West Side"]);
+
+  addTeams('South','3',["Absegami","Allentown","Barnegat","Brick Township","Burlington Township",
+    "Cedar Creek","Cinnaminson","Delsea","Deptford","Ewing","Nottingham","Holmdel","Hopewell Valley",
+    "Lacey","Mainland","Matawan","Neptune","Oakcrest","Ocean City","Ocean Township","Pemberton",
+    "Pinelands","Pleasantville","Robbinsville","Seneca","Somerville","Timber Creek","Triton"]);
+
+  addTeams('North','4',["Belleville","Bergenfield","Newark Central","Chatham","Colonia","Dover",
+    "Fair Lawn","Garfield","Hackensack","Ferris","Iselin Kennedy","Millburn","Montgomery","Morris Knolls",
+    "Mount Olive","North Hunterdon","Northern Highlands","Nutley","Orange","Palisades Park / Leonia",
+    "Phillipsburg","Rahway","Ramapo","Randolph","Ridge","Scotch Plains-Fanwood","Teaneck",
+    "Watchung Hills","Wayne Valley","Westfield","Woodbridge"]);
+
+  addTeams('South','4',["Brick Memorial","Central Regional","Cherry Hill West","Clearview","Colts Neck",
+    "Cumberland","Freehold Borough","Steinert","Hamilton West","Hammonton","Highland","Hightstown",
+    "Lakewood","Lawrence","Long Branch","Manalapan","Marlboro","Middletown North","Middletown South",
+    "Millville","Moorestown","Northern Burlington","Pennsauken","Princeton","Red Bank Regional",
+    "Shawnee","Toms River East","Toms River South","Winslow"]);
+
+  addTeams('North','5',["Barringer","Bayonne","Bergen Tech","Bloomfield","Bridgewater-Raritan",
+    "Cliffside Park / Ridgefield","Clifton","Columbia","East Orange","Paterson Eastside","Elizabeth",
+    "Irvington","Paterson Kennedy","J.P. Stevens","Kearny","Linden","Livingston","Memorial","Montclair",
+    "Morristown","North Bergen","Passaic Tech","Passaic","Piscataway","Plainfield","Ridgewood",
+    "Union City","Union","West Orange","Dickinson"]);
+
+  addTeams('South','5',["Atlantic City","Atlantic Tech","Bridgeton","Cherokee","Cherry Hill East",
+    "East Brunswick","Eastern","Edison","Egg Harbor","Franklin","Freehold Township","Jackson Township",
+    "Hillsborough","Howell","Hunterdon Central","Kingsway","Lenape","Monroe","New Brunswick",
+    "North Brunswick","Old Bridge","Perth Amboy","Rancocas Valley","Sayreville","South Brunswick",
+    "Southern","Toms River North","Trenton","Vineland","Washington Township","West Windsor-Plainsboro",
+    "Williamstown"]);
+
+  addTeams(null,'NPA',["Bergen Catholic","Delbarton","Don Bosco Prep","St. Augustine","St. Joseph (Met.)",
+    "St. Joseph (Mont.)","St. Peter's Prep","Seton Hall Prep"]);
+
+  addTeams(null,'NPB',["Bishop Eustace","Camden Catholic","DePaul","Donovan Catholic",
+    "Gloucester Catholic","Holy Cross Prep","Holy Spirit","Hudson Catholic","Immaculata",
+    "Montclair Kimberley","Morris Catholic","Morristown-Beard","Notre Dame","Paramus Catholic",
+    "Paul VI","Pingry","Pope John","Red Bank Catholic","St. John Vianney","St. Joseph (Hamm.)",
+    "St. Mary (Ruth.)","St. Thomas Aquinas"]);
+
+  // No games yet — schedule to be entered.
+
+  // Teams currently flagged as not playoff-eligible (excluded from Rankings tab only —
+  // their games still count fully toward opponents' SI/OSI/Power Points). Editable later
+  // via the Teams tab in Admin mode, since section/eligibility lists will change.
+  const notEligible = ["Fort Lee","Indian Hills","Ridgefield Park","Fair Lawn","Tenafly","Demarest",
+    "Bergen Tech","Belleville","North Bergen","Dickinson","Memorial","Kearny",
+    "Cliffside Park / Ridgefield","Ferris"];
+  state.teams.forEach(t => { if (notEligible.includes(t.name)) t.ineligible = true; });
+}
+
+/* ============================== DB <-> LOCAL MAPPING ============================== */
+// The DB uses snake_case columns (and "team_group" instead of the reserved word "group");
+// these convert to/from the camelCase shape the rest of the app already expects.
+
+function dbTeamToLocal(row){
+  return {
+    id: row.id, name: row.name, category: row.category,
+    region: row.region, group: row.team_group,
+    startSI: row.start_si, ineligible: row.ineligible,
+    isOutOfState: row.is_out_of_state,
+    manualRecord: row.manual_record || { w:0, t:0, l:0 }
+  };
+}
+function localTeamToDb(t){
+  return {
+    id: t.id, name: t.name, category: t.category,
+    region: t.region, team_group: t.group,
+    start_si: t.startSI, ineligible: t.ineligible,
+    is_out_of_state: t.isOutOfState, manual_record: t.manualRecord
+  };
+}
+function dbGameToLocal(row){
+  return { id: row.id, week: row.week, teamA: row.team_a, teamB: row.team_b, scoreA: row.score_a, scoreB: row.score_b };
+}
+function localGameToDb(g){
+  return { id: g.id, week: g.week, team_a: g.teamA, team_b: g.teamB, score_a: g.scoreA, score_b: g.scoreB };
+}
+
+/* ============================== PERSISTENCE (Supabase) ============================== */
+
+async function loadAllData(){
+  const [teamsRes, gamesRes, coinFlipsRes, msgRes] = await Promise.all([
+    sb.from('teams').select('*'),
+    sb.from('games').select('*'),
+    sb.from('coin_flips').select('*'),
+    sb.from('site_message').select('message').eq('id', 1).maybeSingle()
+  ]);
+  if (teamsRes.error) console.error('Failed to load teams', teamsRes.error);
+  if (gamesRes.error) console.error('Failed to load games', gamesRes.error);
+  if (coinFlipsRes.error) console.error('Failed to load coin flips', coinFlipsRes.error);
+  if (msgRes && msgRes.error) console.error('Failed to load site message', msgRes.error);
+
+  state.teams = (teamsRes.data || []).map(dbTeamToLocal);
+  state.games = (gamesRes.data || []).map(dbGameToLocal);
+  coinFlipResolutions = {};
+  (coinFlipsRes.data || []).forEach(r => { coinFlipResolutions[r.key] = r.winning_team_id; });
+  siteMessage = (msgRes && msgRes.data && msgRes.data.message) ? msgRes.data.message : '';
+
+  // Recompute id counters from loaded data so new additions don't collide.
+  state.teams.forEach(t => { const n = parseInt(t.id.slice(1),10); if (n >= nextTeamId) nextTeamId = n+1; });
+  state.games.forEach(g => { const n = parseInt(g.id.slice(1),10); if (n >= nextGameId) nextGameId = n+1; });
+
+  // Personal predictions — scoped to this visitor's session (anonymous or logged-in).
+  predictions = {};
+  if (currentSession && currentSession.user){
+    const predRes = await sb.from('predictions').select('*').eq('user_id', currentSession.user.id);
+    if (predRes.error) console.error('Failed to load predictions', predRes.error);
+    (predRes.data || []).forEach(r => { predictions[r.game_id] = r.winning_team_id; });
+  }
+
+  dataLoaded = true;
+  renderAll();
+}
+
+async function bootstrap(){
+  await ensureSession();
+  await checkIsAdmin();
+  if (isAdmin){
+    document.getElementById('adminControl').style.display = 'none';
+    document.getElementById('adminBar').style.display = 'flex';
+  }
+  await loadAllData();
+}
+
+/* ============================== PREDICTIONS OVERLAY ============================== */
+
+// Merges official (admin-entered) results with THIS viewer's own predictions for any
+// still-TBD games. Predictions never touch shared/official data — they only affect what
+// this function returns, which feeds every downstream calculation for this viewer's session.
+function effectiveGames(){
+  return state.games.map(g => {
+    if (g.scoreA !== null && g.scoreA !== undefined && g.scoreB !== null && g.scoreB !== undefined) return g;
+    const pick = predictions[g.id];
+    if (!pick) return null; // no official result and no prediction — doesn't count yet
+    const scoreA = pick === g.teamA ? PREDICTION_MARGIN : 0;
+    const scoreB = pick === g.teamB ? PREDICTION_MARGIN : 0;
+    return {...g, scoreA, scoreB, isProjected: true};
+  }).filter(Boolean);
+}
+function hasAnyProjectedGames(){
+  return effectiveGames().some(g => g.isProjected);
+}
+
+/* ============================== TIER 1: STRENGTH INDEX ============================== */
+
+// Compute each team's SI trajectory week by week, frozen after week 7.
+// Returns { lockedSI: {teamId: number}, weeklyRecordThruWeek: helper data }
+function computeStrengthIndex(){
+  const teams = state.teams;
+  const teamById = {};
+  teams.forEach(t => teamById[t.id] = t);
+  const startSI = {};
+  teams.forEach(t => startSI[t.id] = (typeof t.startSI === 'number') ? t.startSI : 60);
+  let currentSI = {...startSI};
+
+  const gamesByWeek = {};
+  effectiveGames().forEach(g => {
+    gamesByWeek[g.week] = gamesByWeek[g.week] || [];
+    gamesByWeek[g.week].push(g);
+  });
+  const weeks = Object.keys(gamesByWeek).map(Number).sort((a,b)=>a-b);
+
+  weeks.forEach(w => {
+    if (w > 7) return; // SI frozen after week 7
+    const snapshot = {...currentSI};
+    const deltas = {};
+    gamesByWeek[w].forEach(g => {
+      const siA = snapshot[g.teamA], siB = snapshot[g.teamB];
+      const expectedDiff = siA - siB;          // positive => A favored
+      const actualDiff = g.scoreA - g.scoreB;  // positive => A won by this much
+      const diffFromExpected = actualDiff - expectedDiff;
+      const delta = diffFromExpected * 0.2;    // A moves by this (can be +/-), B moves opposite
+      // Out-of-state/non-member opponents' SI is assigned externally (MaxPreps-based
+      // comparison), never moved by our internal weekly formula — only the NJ side moves.
+      if (!teamById[g.teamA].isOutOfState) deltas[g.teamA] = (deltas[g.teamA]||0) + delta;
+      if (!teamById[g.teamB].isOutOfState) deltas[g.teamB] = (deltas[g.teamB]||0) - delta;
+    });
+    Object.keys(deltas).forEach(tid => { currentSI[tid] = snapshot[tid] + deltas[tid]; });
+  });
+
+  const lockedSI = {};
+  teams.forEach(t => {
+    lockedSI[t.id] = Math.max(currentSI[t.id], 0); // raw locked value (no floor yet)
+  });
+  // Floor of 20 applies "for purposes of OSI calc only" — keep raw + floored separately
+  const lockedSI_floored = {};
+  teams.forEach(t => { lockedSI_floored[t.id] = Math.max(lockedSI[t.id], 20); });
+
+  return { lockedSI, lockedSI_floored };
+}
+
+/* ============================== TIER 2: MULTIPLIER STATUS ============================== */
+
+// Determine each team's FINAL effective category, walking games in week order.
+// Per ruling confirmed: demotion/removal effects are retroactive — final status
+// is applied to ALL games against that team for OSI purposes.
+function computeFinalCategories(){
+  const teams = state.teams;
+  const finalCat = {};
+  teams.forEach(t => finalCat[t.id] = t.category);
+
+  const sorted = [...effectiveGames()].sort((a,b)=>a.week-b.week);
+  sorted.forEach(g => {
+    if (g.week > 8) return; // rule window is Weeks 0-8
+    [[g.teamA,g.teamB,g.scoreA,g.scoreB],[g.teamB,g.teamA,g.scoreB,g.scoreA]].forEach(([selfId,oppId,selfScore,oppScore]) => {
+      const oppCatAtStart = state.teams.find(t=>t.id===oppId).category; // base category for "non-multiplier" check
+      const lost = selfScore < oppScore;
+      if (!lost) return;
+      if (oppCatAtStart !== null) return; // only demoted by losing to a NON-multiplier school
+      const cur = finalCat[selfId];
+      if (cur === 'A' || cur === 'B' || cur === 'C') {
+        finalCat[selfId] = 'D';
+      } else if (cur === 'D') {
+        finalCat[selfId] = null;
+      }
+    });
+  });
+  return finalCat;
+}
+
+/* ============================== TIER 3: POWER POINTS ============================== */
+
+function teamGames(teamId){
+  return effectiveGames().filter(g => g.teamA===teamId || g.teamB===teamId)
+    .sort((a,b)=>a.week-b.week)
+    .map(g => {
+      const isA = g.teamA===teamId;
+      const oppId = isA? g.teamB : g.teamA;
+      const selfScore = isA? g.scoreA : g.scoreB;
+      const oppScore = isA? g.scoreB : g.scoreA;
+      let result = 'L';
+      if (selfScore>oppScore) result='W'; else if (selfScore===oppScore) result='T';
+      return {...g, oppId, selfScore, oppScore, result};
+    });
+}
+
+function recordThruFirstN(teamId, n){
+  const team = state.teams.find(t=>t.id===teamId);
+  if (team && team.isOutOfState){
+    // We don't track their actual schedule — record through their first 7 games is
+    // entered manually (per the regs, Power Points use the out-of-state opponent's
+    // first 7 games, sourced externally rather than computed from our game log).
+    const mr = team.manualRecord || {w:0,t:0,l:0};
+    return {w:mr.w, t:mr.t, l:mr.l, played: mr.w+mr.t+mr.l};
+  }
+  const gl = teamGames(teamId).slice(0, n);
+  let w=0,t=0,l=0;
+  gl.forEach(g => { if(g.result==='W')w++; else if(g.result==='T')t++; else l++; });
+  return {w,t,l,played:gl.length};
+}
+
+// Residual points lookup table per the regs.
+function residualPoints(selfResult, oppResult){
+  // selfResult: result of the A-vs-B game from A's perspective ('W','T','L')
+  // oppResult: opponent's (B's) result in ONE of their first-7 games being tallied
+  const table = {
+    W: { W:3, T:1.5, L:0 },
+    T: { W:1.5, T:0.75, L:0 },
+    L: { W:1, T:0, L:0 }
+  };
+  return table[selfResult][oppResult];
+}
+
+function computePowerPoints(){
+  const teams = state.teams;
+  const ppTotal = {};
+  const ppGameLog = {}; // for detail view
+
+  teams.forEach(t => {
+    const gl = teamGames(t.id);
+    let total = 0;
+    const log = [];
+    gl.forEach(g => {
+      const quality = g.result==='W'?6 : g.result==='T'?1.5 : 0;
+      const oppRecord = recordThruFirstN(g.oppId, 7);
+      let residual = 0;
+      // Sum residual across each of opponent's first-7 game outcomes, per result-branch table, capped at 18
+      residual += oppRecord.w * residualPoints(g.result,'W');
+      residual += oppRecord.t * residualPoints(g.result,'T');
+      // losses contribute 0 in every branch — skip
+      residual = Math.min(residual, 18);
+      total += quality + residual;
+      log.push({week:g.week, oppId:g.oppId, result:g.result, quality, residual, oppRecord});
+    });
+    const divisor = Math.max(gl.length, 7);
+    ppTotal[t.id] = gl.length ? total/divisor : 0;
+    ppGameLog[t.id] = log;
+  });
+  return { ppTotal, ppGameLog };
+}
+
+/* ============================== TIER 4: OSI ============================== */
+
+function computeOSI(lockedSI_floored, finalCat){
+  const teams = state.teams;
+  const osiTotal = {};
+  const osiGameLog = {};
+
+  teams.forEach(t => {
+    const gl = teamGames(t.id);
+    const selfIsMultiplier = finalCat[t.id] !== null && finalCat[t.id] !== undefined;
+
+    // Identify candidate "bonus" games: this team LOST to a multiplier opponent, and this team itself is non-multiplier.
+    const bonusCandidates = [];
+    gl.forEach((g, idx) => {
+      const oppMultCat = finalCat[g.oppId];
+      if (!selfIsMultiplier && g.result==='L' && oppMultCat) {
+        const bonusPct = MULTIPLIER_PCT[oppMultCat];
+        const oppSI = lockedSI_floored[g.oppId];
+        bonusCandidates.push({ idx, value: oppSI*bonusPct, pct: bonusPct });
+      }
+    });
+    bonusCandidates.sort((a,b)=>b.value-a.value);
+    const boostedIdxSet = new Set(bonusCandidates.slice(0,2).map(c=>c.idx));
+
+    let total = 0;
+    const log = [];
+    gl.forEach((g, idx) => {
+      const oppSI = lockedSI_floored[g.oppId];
+      let pct;
+      if (g.result==='W') pct = 1.0;
+      else if (g.result==='T') pct = 0.75;
+      else { // Loss
+        if (boostedIdxSet.has(idx)) {
+          pct = MULTIPLIER_PCT[finalCat[g.oppId]];
+        } else {
+          pct = 0.50;
+        }
+      }
+      const val = oppSI*pct;
+      total += val;
+      log.push({week:g.week, oppId:g.oppId, result:g.result, oppSI, pct, val, boosted:boostedIdxSet.has(idx)});
+    });
+    const divisor = Math.max(gl.length, 7);
+    osiTotal[t.id] = gl.length ? total/divisor : 0;
+    osiGameLog[t.id] = log;
+  });
+  return { osiTotal, osiGameLog };
+}
+
+/* ============================== TIER 5: UPR RANK-BLEND ============================== */
+
+function getAllSections(){
+  const seen = new Map();
+  state.teams.forEach(t => {
+    if (t.isOutOfState) return; // OOS opponents are never a rankable section
+    const key = sectionKey(t.region, t.group);
+    if (!seen.has(key)) seen.set(key, {region:t.region, group:t.group, label:sectionLabel(t.region,t.group)});
+  });
+  const rank = s => {
+    if (s.group==='NPA') return 1000;
+    if (s.group==='NPB') return 1001;
+    return (s.region==='North'?0:100) + Number(s.group);
+  };
+  return [...seen.values()].sort((a,b)=> rank(a)-rank(b));
+}
+
+function gameMatchesSection(g, sectionFilterKey){
+  if (!sectionFilterKey || sectionFilterKey === 'all') return true;
+  const tA = state.teams.find(t=>t.id===g.teamA);
+  const tB = state.teams.find(t=>t.id===g.teamB);
+  return (tA && sectionKey(tA.region,tA.group)===sectionFilterKey) ||
+         (tB && sectionKey(tB.region,tB.group)===sectionFilterKey);
+}
+function gameBothIneligible(g){
+  // Out-of-state/non-member opponents are always flagged ineligible by design (they're not
+  // an NJ playoff team at all, not a "non-eligible NJ team") — never treat those as a
+  // both-ineligible matchup, since the game itself is still meaningful schedule info.
+  const tA = state.teams.find(t=>t.id===g.teamA);
+  const tB = state.teams.find(t=>t.id===g.teamB);
+  if (!tA || !tB) return false;
+  if (tA.isOutOfState || tB.isOutOfState) return false;
+  return !!tA.ineligible && !!tB.ineligible;
+}
+function gameMatchesEligibilityFilter(g, filter){
+  if (!filter || filter === 'all') return true;
+  const tA = state.teams.find(t=>t.id===g.teamA);
+  const tB = state.teams.find(t=>t.id===g.teamB);
+  const anyIneligible = (tA && tA.ineligible) || (tB && tB.ineligible);
+  if (filter === 'eligible') return !anyIneligible;
+  if (filter === 'noneligible') return anyIneligible;
+  return true;
+}
+function buildEligibilityFilterOptions(selected){
+  return `
+    <option value="all" ${selected==='all'?'selected':''}>All games</option>
+    <option value="eligible" ${selected==='eligible'?'selected':''}>Only eligible matchups</option>
+    <option value="noneligible" ${selected==='noneligible'?'selected':''}>Only non-eligible matchups</option>
+  `;
+}
+function getAllWeeksUsed(){
+  const weeks = new Set(state.games.map(g=>g.week));
+  return [...weeks].sort((a,b)=>a-b);
+}
+function buildWeekFilterOptions(selected){
+  const weeks = getAllWeeksUsed();
+  const opts = [`<option value="all" ${selected==='all'?'selected':''}>All weeks</option>`];
+  weeks.forEach(w => opts.push(`<option value="${w}" ${String(selected)===String(w)?'selected':''}>Week ${w}</option>`));
+  return opts.join('');
+}
+function buildSectionFilterOptions(selected){
+  const sections = getAllSections();
+  const opts = [`<option value="all" ${selected==='all'?'selected':''}>All sections</option>`];
+  sections.forEach(s => {
+    const key = sectionKey(s.region, s.group);
+    opts.push(`<option value="${key}" ${selected===key?'selected':''}>${s.label}</option>`);
+  });
+  return opts.join('');
+}
+
+/* ============================== TIEBREAKER ENGINE ============================== */
+// Implements the official 5-step order: Head-to-Head, Common Opponents, OSI, Power
+// Points, Coin Flip. Per the regs, criteria restart at #1 each time a single team is
+// peeled off the top of a tied group — this engine does that literally: repeatedly find
+// the next-best team among whoever's still unresolved, removing them one at a time.
+
+function groupKeyFor(teamIds){
+  return [...teamIds].sort().join(',');
+}
+
+function recordVsSet(teamId, oppIdSet){
+  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId));
+  let w=0,l=0,t=0;
+  games.forEach(g => { if (g.result==='W') w++; else if (g.result==='T') t++; else l++; });
+  const n = w+l+t;
+  return { w, l, t, games: n, pct: n>0 ? (w + 0.5*t)/n : null };
+}
+
+// Finds the single next-best team among `remaining` (a subset still needing to be placed).
+// `originalGroupIds` = full set of teams that were tied at the UPR-score level, used to
+// exclude internal group members when computing "common opponents" (those are external).
+function pickNextBest(remaining, originalGroupIds, osiTotal, ppTotal){
+  if (remaining.length === 1) return { winner: remaining[0] };
+
+  // Step 1: Head-to-Head — record against other teams still in `remaining`.
+  const remainingIds = new Set(remaining.map(t=>t.id));
+  let scored = remaining.map(t => {
+    const others = new Set([...remainingIds].filter(id=>id!==t.id));
+    return { t, rec: recordVsSet(t.id, others) };
+  });
+  let withData = scored.filter(s => s.rec.games > 0);
+  let candidates = remaining;
+  if (withData.length){
+    const maxPct = Math.max(...withData.map(s=>s.rec.pct));
+    const top = withData.filter(s => Math.abs(s.rec.pct - maxPct) < 1e-9).map(s=>s.t);
+    if (top.length === 1) return { winner: top[0], step: 'Head-to-Head' };
+    candidates = top;
+  }
+
+  // Step 2: Common Opponents — opponents played by EVERY team in `candidates`,
+  // excluding anyone who was part of the original tied group (those are "internal").
+  const oppSets = candidates.map(t => new Set(teamGames(t.id).map(g=>g.oppId).filter(id=>!originalGroupIds.has(id))));
+  let common = oppSets[0] ? new Set(oppSets[0]) : new Set();
+  oppSets.slice(1).forEach(s => { common = new Set([...common].filter(id=>s.has(id))); });
+  if (common.size){
+    const recs = candidates.map(t => ({ t, rec: recordVsSet(t.id, common) }));
+    const withGames = recs.filter(r => r.rec.games > 0);
+    if (withGames.length){
+      const maxPct = Math.max(...withGames.map(r=>r.rec.pct));
+      const top = withGames.filter(r => Math.abs(r.rec.pct - maxPct) < 1e-9).map(r=>r.t);
+      if (top.length === 1) return { winner: top[0], step: 'Common Opponents' };
+      if (top.length) candidates = top;
+    }
+  }
+
+  // Step 3: OSI — compares the actual computed OSI value (not the assigned rank), since
+  // rank is always a unique 1..N permutation and would trivially "resolve" every tie.
+  {
+    const maxVal = Math.max(...candidates.map(t=>osiTotal[t.id]));
+    const top = candidates.filter(t => Math.abs(osiTotal[t.id]-maxVal) < 1e-6);
+    if (top.length === 1) return { winner: top[0], step: 'OSI' };
+    candidates = top;
+  }
+
+  // Step 4: Power Points — same logic, compares the actual value.
+  {
+    const maxVal = Math.max(...candidates.map(t=>ppTotal[t.id]));
+    const top = candidates.filter(t => Math.abs(ppTotal[t.id]-maxVal) < 1e-6);
+    if (top.length === 1) return { winner: top[0], step: 'Power Points' };
+    candidates = top;
+  }
+
+  // Step 5: Coin Flip — genuinely unresolved by any objective criterion; needs a human.
+  return { needsCoinFlip: true, tiedSubset: candidates };
+}
+
+// Resolves one full tied-UPR-score group into a final order, consulting any stored
+// manual coin-flip resolutions. Returns { order, coinFlipsNeeded, tiebreakerLog } — the
+// log explains, per team, which step decided their tiebreaker and against whom, so this
+// can be shown publicly rather than silently reordering teams.
+function resolveTieGroup(group, osiTotal, ppTotal){
+  const originalGroupIds = new Set(group.map(t=>t.id));
+  let remaining = [...group];
+  const order = [];
+  const coinFlipsNeeded = [];
+  const rounds = []; // {step, winnerId, consideredIds}
+
+  while (remaining.length > 0){
+    if (remaining.length === 1){ order.push(remaining[0]); break; }
+    const result = pickNextBest(remaining, originalGroupIds, osiTotal, ppTotal);
+    if (result.winner){
+      rounds.push({ step: result.step, winnerId: result.winner.id, consideredIds: remaining.map(t=>t.id) });
+      order.push(result.winner);
+      remaining = remaining.filter(t => t.id !== result.winner.id);
+      continue;
+    }
+    // Needs a coin flip among result.tiedSubset.
+    const key = groupKeyFor(result.tiedSubset.map(t=>t.id));
+    const chosenId = coinFlipResolutions[key];
+    const chosen = chosenId ? result.tiedSubset.find(t=>t.id===chosenId) : null;
+    if (chosen){
+      rounds.push({ step: 'Coin Flip', winnerId: chosen.id, consideredIds: result.tiedSubset.map(t=>t.id) });
+      order.push(chosen);
+      remaining = remaining.filter(t => t.id !== chosen.id);
+      continue;
+    }
+    // No resolution on file — place this whole unresolved subset in stable order and stop
+    // trying to resolve further within it (admin needs to flip a coin and pick a winner).
+    coinFlipsNeeded.push({ key, teams: result.tiedSubset });
+    result.tiedSubset.forEach(t => order.push(t));
+    remaining = remaining.filter(t => !result.tiedSubset.some(o=>o.id===t.id));
+  }
+
+  const tiebreakerLog = {};
+  rounds.forEach(rnd => {
+    const winnerTeam = group.find(t=>t.id===rnd.winnerId);
+    const otherIds = rnd.consideredIds.filter(id=>id!==rnd.winnerId);
+    const otherNames = otherIds.map(id => { const t=group.find(g=>g.id===id); return t?t.name:null; }).filter(Boolean);
+    tiebreakerLog[rnd.winnerId] = { step: rnd.step, result: 'won', vsNames: otherNames };
+    otherIds.forEach(id => {
+      if (!tiebreakerLog[id]) tiebreakerLog[id] = { step: rnd.step, result: 'lost', vsNames: [winnerTeam ? winnerTeam.name : ''] };
+    });
+  });
+
+  return { order, coinFlipsNeeded, tiebreakerLog };
+}
+
+function computeUPR(sectionFilterKey){
+  const { lockedSI, lockedSI_floored } = computeStrengthIndex();
+  const finalCat = computeFinalCategories();
+  const { ppTotal, ppGameLog } = computePowerPoints();
+  const { osiTotal, osiGameLog } = computeOSI(lockedSI_floored, finalCat);
+
+  // OSI/Power Points above are computed across the FULL statewide pool of teams/games —
+  // cross-section opponents correctly influence these numbers (this includes ineligible
+  // teams, whose games still count toward their opponents' OSI/Power Points). Ranking
+  // below excludes ineligible teams and is scoped to one section only, per NJSIAA rules.
+  const sectionTeams = (sectionFilterKey
+    ? state.teams.filter(t => sectionKey(t.region,t.group) === sectionFilterKey)
+    : state.teams
+  ).filter(t => !t.ineligible && !t.isOutOfState);
+
+  const byOSI = [...sectionTeams].sort((a,b)=>osiTotal[b.id]-osiTotal[a.id]);
+  const byPP  = [...sectionTeams].sort((a,b)=>ppTotal[b.id]-ppTotal[a.id]);
+  const osiRank = {}, ppRank = {};
+  byOSI.forEach((t,i)=>osiRank[t.id]=i+1);
+  byPP.forEach((t,i)=>ppRank[t.id]=i+1);
+
+  const uprScore = {};
+  sectionTeams.forEach(t => { uprScore[t.id] = osiRank[t.id]*0.6 + ppRank[t.id]*0.4; });
+
+  let ranked = [...sectionTeams].sort((a,b)=>uprScore[a.id]-uprScore[b.id]);
+
+  // Resolve exact UPR-score ties using the full 5-step tiebreaker chain.
+  const tieFlags = {};
+  const tiebreakerLog = {};
+  {
+    let i = 0;
+    while (i < ranked.length){
+      let j = i+1;
+      while (j < ranked.length && Math.abs(uprScore[ranked[j].id]-uprScore[ranked[i].id]) < 1e-9) j++;
+      if (j - i > 1){
+        const group = ranked.slice(i, j);
+        const { order, coinFlipsNeeded, tiebreakerLog: groupLog } = resolveTieGroup(group, osiTotal, ppTotal);
+        for (let k=0; k<order.length; k++) ranked[i+k] = order[k];
+        Object.assign(tiebreakerLog, groupLog);
+        coinFlipsNeeded.forEach(({key, teams}) => {
+          teams.forEach(t => { tieFlags[t.id] = { key, otherNames: teams.filter(o=>o.id!==t.id).map(o=>o.name) }; });
+        });
+      }
+      i = j;
+    }
+  }
+
+  // Head-to-head seeding cascade (insertion-style adjacent swap), run across top 17 (or fewer)
+  const cascadeLimit = Math.min(ranked.length, 17);
+  let jumped = {};
+  for (let i=1; i<cascadeLimit; i++){
+    let cur = i;
+    while (cur>0){
+      const lower = ranked[cur], upper = ranked[cur-1];
+      const game = effectiveGames().find(g =>
+        (g.teamA===lower.id && g.teamB===upper.id) || (g.teamB===lower.id && g.teamA===upper.id)
+      );
+      let lowerWon = false;
+      if (game){
+        const lowerIsA = game.teamA===lower.id;
+        const lowerScore = lowerIsA? game.scoreA : game.scoreB;
+        const upperScore = lowerIsA? game.scoreB : game.scoreA;
+        lowerWon = lowerScore > upperScore;
+      }
+      if (lowerWon){
+        [ranked[cur-1], ranked[cur]] = [ranked[cur], ranked[cur-1]];
+        jumped[lower.id] = true;
+        cur--;
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Auto-qualifier / eliminator rule: an undefeated team (7+ wins vs NJSIAA member
+  // schools, no ties) outside the top 16 bumps out the current bottom of the field.
+  // Multiple such teams are processed in their own UPR order, each replacing whoever
+  // is now lowest after the previous swap.
+  const QUALIFY_LIMIT = 16;
+  let top16 = ranked.slice(0, Math.min(QUALIFY_LIMIT, ranked.length));
+  const autoQualifiedIn = {}, autoEliminated = {};
+  if (ranked.length > QUALIFY_LIMIT){
+    const top16Ids = new Set(top16.map(t=>t.id));
+    const candidates = ranked.filter(t => !top16Ids.has(t.id)).filter(t => {
+      const gl = teamGames(t.id);
+      const losses = gl.filter(g=>g.result==='L').length;
+      const ties = gl.filter(g=>g.result==='T').length;
+      const memberWins = gl.filter(g => {
+        if (g.result!=='W') return false;
+        const opp = state.teams.find(o=>o.id===g.oppId);
+        return !(opp && opp.isOutOfState);
+      }).length;
+      return losses===0 && ties===0 && memberWins>=7;
+    });
+    candidates.forEach(c => {
+      if (top16.length < QUALIFY_LIMIT){ top16.push(c); autoQualifiedIn[c.id]=true; return; }
+      const removed = top16[top16.length-1];
+      top16[top16.length-1] = c;
+      autoQualifiedIn[c.id] = true;
+      autoEliminated[removed.id] = true;
+    });
+  }
+  const qualifiedIds = new Set(top16.map(t=>t.id));
+
+  return { ranked, osiTotal, ppTotal, osiRank, ppRank, uprScore, tieFlags, tiebreakerLog, jumped,
+           qualifiedIds, autoQualifiedIn, autoEliminated,
+           lockedSI, lockedSI_floored, finalCat, ppGameLog, osiGameLog };
+}
+
+/* ============================== RENDERING ============================== */
+
+function catPill(cat){
+  if (!cat) return '<span class="cat-none">—</span>';
+  return `<span class="cat-pill cat-${cat}">${cat}</span>`;
+}
+
+function teamName(id){
+  const t = state.teams.find(t=>t.id===id);
+  return t ? t.name : '—';
+}
+
+function teamInfoBadge(id){
+  const t = state.teams.find(t=>t.id===id);
+  if (!t) return '';
+  const sectionText = t.isOutOfState ? 'Out-of-State / Non-Member' : sectionLabel(t.region, t.group);
+  const sectionPill = `<span style="display:inline-block; font-size:10px; padding:1px 6px; border-radius:8px; background:#232830; color:var(--chalk-dim); font-family:'IBM Plex Mono',monospace;">${sectionText}</span>`;
+  const eligPill = t.ineligible ? `<span class="tie-flag" style="margin-left:4px;">Not eligible</span>` : '';
+  return `<div style="margin-top:3px;">${sectionPill}${eligPill}</div>`;
+}
+
+function renderTeamsTab(){
+  const el = document.getElementById('tab-teams');
+  const njTeams = state.teams.filter(t => !t.isOutOfState);
+  const oosTeams = state.teams.filter(t => t.isOutOfState);
+
+  let rows = njTeams.map(t => `
+    <tr>
+      <td class="team-name">${isAdmin
+        ? `<input type="text" value="${t.name.replace(/"/g,'&quot;')}" style="width:170px" onchange="setTeamName('${t.id}', this.value)">`
+        : t.name
+      }</td>
+      <td>${sectionLabel(t.region, t.group)}</td>
+      <td class="center">${catPill(t.category)}</td>
+      <td class="num">${teamGames(t.id).length}</td>
+      <td class="center">
+        ${isAdmin
+          ? `<input type="checkbox" ${t.ineligible?'':'checked'} onchange="setEligible('${t.id}', this.checked)" title="Playoff eligible">`
+          : (t.ineligible ? '<span class="tie-flag">Not eligible</span>' : '<span class="cat-none">—</span>')
+        }
+      </td>
+      ${isAdmin ? `
+        <td class="num"><input type="number" step="0.01" value="${t.startSI}" style="width:80px" onchange="setStartSI('${t.id}', this.value)"></td>
+        <td class="center"><button class="danger" onclick="removeTeam('${t.id}')">Remove</button></td>
+      ` : ''}
+    </tr>
+  `).join('');
+  if (!njTeams.length) rows = `<tr><td colspan="${isAdmin?7:5}" class="empty">No teams yet.</td></tr>`;
+
+  const bulkSIPanel = isAdmin ? `
+    <div class="panel">
+      <h2>Bulk Set Starting SI <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">One team per line: <code>team name, starting SI value</code>. Works with comma- or tab-separated lines, an optional header row starting with "Team" is ignored, and team names must exactly match an existing team (case-insensitive). Use this each season once Gridiron NJ posts the rebalanced starting values — re-running it just overwrites whatever was there before, so it's safe to paste again if a correction comes out.</p>
+      <textarea id="bulkSIInput" rows="8" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="Old Tappan, 79.85&#10;Cranford, 64.20"></textarea>
+      <div class="form-row" style="margin-top:10px;">
+        <button onclick="bulkSetStartingSI()">Apply Starting SI</button>
+      </div>
+      <div id="bulkSIStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  ` : '';
+
+  const addTeamPanel = isAdmin ? `
+    <div class="panel">
+      <h2>Add team <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">Region + Group determines which supersection a team is ranked within (e.g. North, Group 3). Teams from different sections can still play each other — those cross-section games count fully toward both teams' SI/OSI/Power Points. Non-Public A/B have no Region.</p>
+      <div class="form-row">
+        <div class="field"><label>Team name</label><input type="text" id="newTeamName" placeholder="e.g. Old Bridge"></div>
+        <div class="field"><label>Group</label>
+          <select id="newTeamGroup" onchange="toggleRegionField()">
+            <option value="1">Group 1</option><option value="2">Group 2</option>
+            <option value="3">Group 3</option><option value="4">Group 4</option>
+            <option value="5">Group 5</option>
+            <option value="NPA">Non-Public A</option><option value="NPB">Non-Public B</option>
+          </select>
+        </div>
+        <div class="field" id="regionFieldWrap"><label>Region</label>
+          <select id="newTeamRegion"><option value="North">North</option><option value="South">South</option></select>
+        </div>
+        <div class="field"><label>Multiplier category</label>
+          <select id="newTeamCat">
+            <option value="">None (public / non-multiplier)</option>
+            <option value="A">A — 80%</option>
+            <option value="B">B — 75%</option>
+            <option value="C">C — 70%</option>
+            <option value="D">D — 70%</option>
+          </select>
+        </div>
+        <button onclick="addTeam()">Add team</button>
+      </div>
+    </div>
+  ` : `
+    <div class="panel"><p class="hint" style="margin:0;">Roster editing is admin-only. Log in via the Admin PIN field in the top right to add or remove teams.</p></div>
+  `;
+
+  const oosRows = oosTeams.map(t => `
+    <tr>
+      <td class="team-name">${isAdmin
+        ? `<input type="text" value="${t.name.replace(/"/g,'&quot;')}" style="width:160px" onchange="setTeamName('${t.id}', this.value)">`
+        : t.name
+      }</td>
+      <td class="num">${teamGames(t.id).length}</td>
+      <td class="num">
+        ${isAdmin
+          ? `<input type="number" step="0.01" value="${t.startSI}" style="width:80px" onchange="setOOSField('${t.id}','si',this.value)">`
+          : t.startSI.toFixed(2)}
+      </td>
+      <td class="num">
+        ${isAdmin
+          ? `<input type="number" min="0" value="${t.manualRecord.w}" style="width:55px" onchange="setOOSField('${t.id}','w',this.value)">`
+          : t.manualRecord.w}
+      </td>
+      <td class="num">
+        ${isAdmin
+          ? `<input type="number" min="0" value="${t.manualRecord.t}" style="width:55px" onchange="setOOSField('${t.id}','t',this.value)">`
+          : t.manualRecord.t}
+      </td>
+      <td class="num">
+        ${isAdmin
+          ? `<input type="number" min="0" value="${t.manualRecord.l}" style="width:55px" onchange="setOOSField('${t.id}','l',this.value)">`
+          : t.manualRecord.l}
+      </td>
+      ${isAdmin ? `<td class="center"><button class="danger" onclick="removeTeam('${t.id}')">Remove</button></td>` : ''}
+    </tr>
+  `).join('');
+
+  const oosAddRow = isAdmin ? `
+    <div class="form-row" style="margin-top:10px;">
+      <div class="field"><label>Opponent name</label><input type="text" id="newOOSName" placeholder="e.g. St. Frances Academy (MD)"></div>
+      <button onclick="addOutOfStateTeam()">Add out-of-state opponent</button>
+    </div>
+  ` : '';
+
+  const oosPanel = `
+    <div class="panel">
+      <h2>Out-of-State / Non-Member Opponents</h2>
+      <p class="hint">These never appear in any section's rankings. Their Strength Index does <em>not</em> move via our weekly formula — it's whatever value is entered here, per the Gridiron NJ MaxPreps-based assignment (update at Week 2 initial, Week 5 interim, and final lock). Their W-T-L record through their first 7 games is entered manually, since we don't track their actual schedule — this feeds Residual Points for whichever NJ team played them.</p>
+      ${oosTeams.length ? `
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Opponent</th><th class="num">Games vs. NJ</th><th class="num">Current SI</th><th class="num">W</th><th class="num">T</th><th class="num">L</th>${isAdmin?'<th class="center">—</th>':''}</tr></thead>
+            <tbody>${oosRows}</tbody>
+          </table>
+        </div>
+      ` : '<p class="empty">None added yet.</p>'}
+      ${oosAddRow}
+    </div>
+  `;
+
+  el.innerHTML = `
+    ${addTeamPanel}
+    <div class="panel">
+      <h2>Teams (${njTeams.length})</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Team</th><th>Section</th><th class="center">Category</th><th class="num">Games</th><th class="center">Eligible</th>
+            ${isAdmin ? '<th class="num">Start SI</th><th class="center">—</th>' : ''}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    ${bulkSIPanel}
+    ${oosPanel}
+  `;
+}
+
+function renderGamesTab(){
+  const el = document.getElementById('tab-games');
+  if (state.teams.length < 2){
+    el.innerHTML = `<div class="panel"><p class="empty">Add at least 2 teams first.</p></div>`;
+    return;
+  }
+  const options = [...state.teams]
+    .sort((a,b)=> a.name.localeCompare(b.name))
+    .map(t=>`<option value="${t.id}">${t.name} (${sectionLabel(t.region,t.group)})</option>`).join('');
+
+  let sorted = [...state.games]
+    .filter(g => (gamesFilterWeek==='all' || String(g.week)===String(gamesFilterWeek)))
+    .filter(g => gameMatchesSection(g, gamesFilterSection))
+    .filter(g => gamesFilterSection==='all' || !gameBothIneligible(g)) // hide both-ineligible matchups when viewing a specific section
+    .filter(g => gameMatchesEligibilityFilter(g, gamesFilterEligibility))
+    .sort((a,b)=> a.week-b.week);
+
+  let rows = sorted.map(g => {
+    const isTBD = g.scoreA === null || g.scoreB === null;
+    const myPick = predictions[g.id];
+    let scoreCell;
+    if (!isTBD) {
+      scoreCell = `<td class="num">${g.scoreA}</td><td class="center">–</td><td class="num">${g.scoreB}</td>`;
+    } else if (isAdmin) {
+      scoreCell = `<td class="num" colspan="3" style="text-align:center;">
+        <span style="color:var(--chalk-dim); font-size:11px;">TBD —</span>
+        <input type="number" min="0" placeholder="A" style="width:55px" id="res-${g.id}-A">
+        <input type="number" min="0" placeholder="B" style="width:55px" id="res-${g.id}-B">
+        <button class="ghost" style="padding:4px 8px; font-size:11px;" onclick="submitGameResult('${g.id}')">Save result</button>
+      </td>`;
+    } else {
+      scoreCell = `<td class="num" colspan="3" style="text-align:center; color:var(--chalk-dim);">
+        TBD ${myPick ? `<span class="jump-tag">your pick: ${teamName(myPick)}</span>` : ''}
+      </td>`;
+    }
+    return `
+    <tr>
+      <td class="num">${g.week}</td>
+      <td class="team-name">${teamName(g.teamA)}${teamInfoBadge(g.teamA)}</td>
+      ${scoreCell}
+      <td class="team-name">${teamName(g.teamB)}${teamInfoBadge(g.teamB)}</td>
+      ${isAdmin ? `<td class="center"><button class="danger" onclick="removeGame('${g.id}')">Remove</button></td>` : ''}
+    </tr>
+  `;
+  }).join('');
+  if (!sorted.length) rows = `<tr><td colspan="${isAdmin?7:6}" class="empty">${state.games.length ? 'No games match this filter.' : 'No games yet.'}</td></tr>`;
+
+  const addGamePanel = isAdmin ? `
+    <div class="panel">
+      <h2>Add game <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">Strength Index moves weekly through Week 7 only (frozen after); residual Power Points use each opponent's first 7 games. <strong>Leave both scores blank to schedule a future game with no result yet</strong> — it'll appear as TBD and be open for user predictions until you enter the real result.</p>
+      <div class="form-row">
+        <div class="field"><label>Week</label><input type="number" id="gWeek" value="1" min="0" max="11"></div>
+        <div class="field"><label>Team A</label><select id="gTeamA">${options}</select></div>
+        <div class="field"><label>Score A</label><input type="number" id="gScoreA" placeholder="TBD" min="0"></div>
+        <div class="field"><label>Team B</label><select id="gTeamB">${options}</select></div>
+        <div class="field"><label>Score B</label><input type="number" id="gScoreB" placeholder="TBD" min="0"></div>
+        <button onclick="addGame()">Add game</button>
+      </div>
+      <div id="addGameError" style="display:none; color:var(--red); font-size:12px; margin-top:6px;"></div>
+    </div>
+    <div class="panel">
+      <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">One game per line: <code>week, team A name, team B name</code> — or include scores: <code>week, team A, team B, score A, score B</code>. Leave scores off (or blank) for a TBD game. Works with comma- or tab-separated lines (so pasting straight from a spreadsheet works), and a header row starting with "Week" is ignored automatically. Team names must exactly match an existing team (case-insensitive) — add any missing teams or out-of-state opponents first. Duplicate week+matchup entries are skipped automatically.</p>
+      <textarea id="bulkGamesInput" rows="8" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="0, Old Tappan, Cranford&#10;0, West Morris, Summit, 21, 14"></textarea>
+      <div class="form-row" style="margin-top:10px;">
+        <button onclick="bulkAddGames()">Add Games from Text</button>
+      </div>
+      <div id="bulkAddStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px;"></div>
+    </div>
+    <div class="panel" style="border-color:var(--red);">
+      <h2 style="color:var(--red);">Danger Zone <span style="color:var(--chalk-dim); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">Permanently deletes the <strong>entire</strong> schedule (every game, every section) so you can start a fresh import. Teams, eligibility, and Strength Index settings are untouched. This cannot be undone.</p>
+      <div class="form-row" style="align-items:center;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--chalk-dim);">
+          <input type="checkbox" id="wipeConfirmCheck" onchange="toggleWipeConfirm()"> I understand this deletes all ${state.games.length} games and cannot be undone.
+        </label>
+        <button id="wipeScheduleBtn" class="danger" disabled style="opacity:0.4; cursor:not-allowed;" onclick="wipeEntireSchedule()">Wipe Entire Schedule</button>
+      </div>
+    </div>
+  ` : `
+    <div class="panel"><p class="hint" style="margin:0;">Schedule editing is admin-only. Log in via the Admin PIN field in the top right to add or remove games.</p></div>
+  `;
+
+  el.innerHTML = `
+    ${addGamePanel}
+    <div class="panel">
+      <h2>Schedule (${sorted.length} of ${state.games.length} games)</h2>
+      <div class="form-row">
+        <div class="field"><label>Week</label><select id="gamesWeekFilter" onchange="gamesFilterWeek=this.value; renderGamesTab();">${buildWeekFilterOptions(gamesFilterWeek)}</select></div>
+        <div class="field"><label>Section</label><select id="gamesSectionFilter" onchange="gamesFilterSection=this.value; renderGamesTab();">${buildSectionFilterOptions(gamesFilterSection)}</select></div>
+        <div class="field"><label>Eligibility</label><select id="gamesEligFilter" onchange="gamesFilterEligibility=this.value; renderGamesTab();">${buildEligibilityFilterOptions(gamesFilterEligibility)}</select></div>
+      </div>
+      <p class="hint">Section filter shows a game if <em>either</em> team belongs to that supersection — cross-section games will appear under both. When a specific section is selected, games where <em>both</em> teams are non-eligible are hidden automatically (out-of-state opponents are never counted toward this).</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="num">Wk</th><th>Team A</th><th class="num">Score</th><th></th><th class="num">Score</th><th>Team B</th>
+            ${isAdmin?'<th class="center">—</th>':''}
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderResultsTab(){
+  const el = document.getElementById('tab-results');
+  if (state.teams.length < 2){
+    el.innerHTML = `<div class="panel"><p class="empty">Add teams and games to see rankings.</p></div>`;
+    return;
+  }
+  const sections = getAllSections();
+  if (!sections.length){
+    el.innerHTML = `<div class="panel"><p class="empty">No sections yet.</p></div>`;
+    return;
+  }
+  if (!selectedSection || !sections.some(s=>sectionKey(s.region,s.group)===selectedSection)){
+    selectedSection = sectionKey(sections[0].region, sections[0].group);
+  }
+  const sectionOptions = sections.map(s => {
+    const key = sectionKey(s.region,s.group);
+    return `<option value="${key}" ${key===selectedSection?'selected':''}>${s.label}</option>`;
+  }).join('');
+
+  if (!effectiveGames().length){
+    el.innerHTML = `
+      <div class="panel">
+        <h2>Rankings</h2>
+        <div class="form-row">
+          <div class="field"><label>Section</label><select id="sectionSelect" onchange="selectedSection=this.value; renderResultsTab();">${sectionOptions}</select></div>
+        </div>
+        <p class="empty">Add games (or make predictions on the Predict tab) to see rankings for this section.</p>
+      </div>`;
+    return;
+  }
+
+  const r = computeUPR(selectedSection);
+
+  let rows = r.ranked.map((t,i) => {
+    const seed = i+1;
+    const isQualify = r.qualifiedIds.has(t.id);
+    const cutline = (seed === 16 && !r.autoQualifiedIn[t.id] && !r.autoEliminated[t.id]) ? 'cutline' : '';
+    const jumpTag = r.jumped[t.id] ? '<span class="jump-tag">▲ H2H</span>' : '';
+    const aqTag = r.autoQualifiedIn[t.id] ? '<span class="jump-tag" style="color:var(--gold);">★ Auto-Qualifier</span>' : '';
+    const elimTag = r.autoEliminated[t.id] ? '<span class="tie-flag">Bumped by Auto-Qualifier</span>' : '';
+    const tf = r.tieFlags[t.id];
+    const tieTag = tf ? `<span class="tie-flag" title="Tied with: ${tf.otherNames.join(', ')}">COIN FLIP NEEDED</span>` : '';
+    const tbLog = r.tiebreakerLog[t.id];
+    const tbTag = tbLog
+      ? `<span class="tb-tag" title="${tbLog.result==='won' ? 'Won' : 'Lost'} tiebreaker vs. ${tbLog.vsNames.join(', ')} — decided by ${tbLog.step}">${tbLog.result==='won'?'✓':'✗'} TB: ${tbLog.step}</span>`
+      : '';
+    return `
+      <tr class="${isQualify?'qualify':''} ${cutline}">
+        <td class="rank-num">${seed}</td>
+        <td class="team-name" style="cursor:pointer" onclick="openDetail('${t.id}')">${t.name}${jumpTag}${aqTag}${elimTag}${tieTag}${tbTag}</td>
+        <td class="num">${r.osiTotal[t.id].toFixed(2)}</td>
+        <td class="num">${r.osiRank[t.id]}</td>
+        <td class="num">${r.ppTotal[t.id].toFixed(2)}</td>
+        <td class="num">${r.ppRank[t.id]}</td>
+        <td class="num">${r.uprScore[t.id].toFixed(3)}</td>
+        <td class="center">${catPill(r.finalCat[t.id])}</td>
+      </tr>
+    `;
+  }).join('');
+
+  // Any coin-flips needed in this section, deduplicated by key, for the admin resolution panel.
+  const pendingFlips = [];
+  const seenKeys = new Set();
+  Object.values(r.tieFlags).forEach(tf => {
+    if (seenKeys.has(tf.key)) return;
+    seenKeys.add(tf.key);
+    const teams = tf.key.split(',').map(id => state.teams.find(t=>t.id===id)).filter(Boolean);
+    pendingFlips.push({ key: tf.key, teams });
+  });
+  const coinFlipPanel = pendingFlips.length ? `
+    <div class="panel" style="border-color:var(--gold-dim);">
+      <h2 style="color:var(--gold);">Coin Flips Needed ${isAdmin ? '' : '<span style="color:var(--chalk-dim); font-size:11px; text-transform:none;">(admin resolves these)</span>'}</h2>
+      <p class="hint">These teams are tied even after Head-to-Head, Common Opponents, OSI, and Power Points — per the regs, only a real coin flip breaks this. Pick the winner of each flip below once it's been performed.</p>
+      ${pendingFlips.map(pf => `
+        <div class="form-row" style="align-items:center; margin-bottom:8px;">
+          <span style="font-size:12.5px; color:var(--chalk-dim); min-width:160px;">${pf.teams.map(t=>t.name).join(' vs ')}:</span>
+          ${isAdmin ? pf.teams.map(t => `<button class="ghost" onclick="resolveCoinFlip('${pf.key}','${t.id}')">${t.name} wins flip</button>`).join('') : ''}
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>Final Standings</h2>
+      <div class="form-row">
+        <div class="field"><label>Section</label><select id="sectionSelect" onchange="selectedSection=this.value; renderResultsTab();">${sectionOptions}</select></div>
+      </div>
+      ${hasAnyProjectedGames() ? `<p style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-radius:4px; padding:8px 12px; font-size:12.5px; color:var(--gold); margin:0 0 14px;">
+        ⚡ These rankings include your own predictions for one or more not-yet-played games. Only you see this — switch to the Predict tab to change picks, or <span style="text-decoration:underline; cursor:pointer;" onclick="clearAllPredictions()">clear all your predictions</span> to see official-only rankings.
+      </p>` : ''}
+      <p class="hint">Lower UPR score = better. Ranking is scoped to this section only — but OSI/Power Points totals already account for any games against teams in <em>other</em> sections. Green rows qualify for states (top 16, after any auto-qualifier swaps). Dashed line marks the natural #16 cutoff. "▲ H2H" = moved up via the seeding rule; "★ Auto-Qualifier" = undefeated team (7+ wins vs. member schools, no ties) that bumped into the field; "Bumped by Auto-Qualifier" = lost a spot because of one. Click a team name for its full breakdown.</p>
+      <div class="table-scroll">
+        <table class="results-table">
+          <thead><tr>
+            <th>Seed</th><th>Team</th>
+            <th class="num">OSI</th><th class="num">OSI Rk</th>
+            <th class="num">Power Pts</th><th class="num">PP Rk</th>
+            <th class="num">UPR</th><th class="center">Mult. Cat (final)</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="legend">
+        <span><span class="dot" style="background:rgba(60,107,66,0.5)"></span>Qualifies for states</span>
+        <span>▲ H2H = moved up via head-to-head jump rule</span>
+        <span style="color:var(--gold)">★ Auto-Qualifier = undefeated team bumped into the field</span>
+        <span style="color:#7ec8e8">✓/✗ TB: [step] = result of a tiebreaker — hover for who and why</span>
+      </div>
+    </div>
+    ${coinFlipPanel}
+    <div class="panel">
+      <h2>Known limitations</h2>
+      <p class="hint" style="margin-bottom:0;">
+        Not yet implemented: the North/South snake-seeding bracket display (qualification and seeding order are fully modeled — head-to-head, common opponents, OSI, Power Points, coin flip, and the auto-qualifier/eliminator rule are all live). The bracket pairing/home-team display is the remaining piece.
+      </p>
+    </div>
+  `;
+}
+
+function renderDetailTab(){
+  const el = document.getElementById('tab-detail');
+  if (!state.teams.length){
+    el.innerHTML = `<div class="panel"><p class="empty">Add teams first.</p></div>`;
+    return;
+  }
+  if (!selectedDetailTeam) selectedDetailTeam = state.teams[0].id;
+  const r = computeUPR();
+  const options = [...state.teams]
+    .sort((a,b)=> a.name.localeCompare(b.name))
+    .map(t=>`<option value="${t.id}" ${t.id===selectedDetailTeam?'selected':''}>${t.name}</option>`).join('');
+
+  const ppLog = r.ppGameLog[selectedDetailTeam] || [];
+  const osiLog = r.osiGameLog[selectedDetailTeam] || [];
+
+  const ppRows = ppLog.map(l => `
+    <tr>
+      <td class="num">${l.week}</td>
+      <td class="team-name">${teamName(l.oppId)}</td>
+      <td class="center">${l.result}</td>
+      <td class="num">${l.quality}</td>
+      <td class="num">${l.residual.toFixed(2)}</td>
+      <td class="num">${(l.quality+l.residual).toFixed(2)}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="6" class="empty">No games.</td></tr>`;
+
+  const osiRows = osiLog.map(l => `
+    <tr>
+      <td class="num">${l.week}</td>
+      <td class="team-name">${teamName(l.oppId)}</td>
+      <td class="center">${l.result}</td>
+      <td class="num">${l.oppSI.toFixed(2)}</td>
+      <td class="num">${(l.pct*100).toFixed(0)}%${l.boosted?' <span style="color:var(--gold)">(boost)</span>':''}</td>
+      <td class="num">${l.val.toFixed(2)}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="6" class="empty">No games.</td></tr>`;
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>Team detail</h2>
+      <div class="form-row">
+        <div class="field"><label>Team</label><select id="detailTeamSelect" onchange="selectedDetailTeam=this.value; renderDetailTab();">${options}</select></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Power Points breakdown — ${teamName(selectedDetailTeam)} <span style="color:var(--chalk-dim); font-size:13px; text-transform:none;">(${(()=>{const t=state.teams.find(t=>t.id===selectedDetailTeam); return t?sectionLabel(t.region,t.group):'';})()})</span></h2>
+      <p class="hint">Residual points are based on each opponent's first 7 games, capped at 18 per game. Final total ÷ ${Math.max(ppLog.length,7)} (min. 7 games).</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="num">Wk</th><th>Opponent</th><th class="center">Result</th><th class="num">Quality</th><th class="num">Residual</th><th class="num">Game Total</th></tr></thead>
+          <tbody>${ppRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>OSI breakdown — ${teamName(selectedDetailTeam)}</h2>
+      <p class="hint">Uses opponents' locked (Week 7) Strength Index, floored at 20. "(boost)" = non-public multiplier bonus percentage applied (capped at 2 games/season).</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="num">Wk</th><th>Opponent</th><th class="center">Result</th><th class="num">Opp. SI</th><th class="num">% Used</th><th class="num">Value</th></tr></thead>
+          <tbody>${osiRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderPredictTab(){
+  const el = document.getElementById('tab-predict');
+  const allTbdGames = state.games.filter(g => g.scoreA===null || g.scoreA===undefined || g.scoreB===null || g.scoreB===undefined);
+  const totalPicked = Object.keys(predictions).length;
+
+  if (!allTbdGames.length){
+    el.innerHTML = `<div class="panel"><p class="empty">No upcoming (TBD) games scheduled yet — admin adds these with blank scores on the Games tab.</p></div>`;
+    return;
+  }
+
+  const tbdGames = allTbdGames
+    .filter(g => (predictFilterWeek==='all' || String(g.week)===String(predictFilterWeek)))
+    .filter(g => gameMatchesSection(g, predictFilterSection))
+    .filter(g => predictFilterSection==='all' || !gameBothIneligible(g)) // hide both-ineligible matchups when viewing a specific section
+    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility));
+
+  const sorted = [...tbdGames].sort((a,b)=> a.week-b.week);
+  const rows = sorted.map(g => {
+    const pick = predictions[g.id];
+    const btnA = `<button class="${pick===g.teamA?'':'ghost'}" style="${pick===g.teamA?'':'background:transparent;'}" onclick="setPrediction('${g.id}','${g.teamA}')">${teamName(g.teamA)} wins</button>`;
+    const btnB = `<button class="${pick===g.teamB?'':'ghost'}" style="${pick===g.teamB?'':'background:transparent;'}" onclick="setPrediction('${g.id}','${g.teamB}')">${teamName(g.teamB)} wins</button>`;
+    return `
+      <tr>
+        <td class="num">${g.week}</td>
+        <td class="team-name">
+          ${teamName(g.teamA)}${teamInfoBadge(g.teamA)}
+          <div style="margin:4px 0; color:var(--chalk-dim); font-size:11px;">vs</div>
+          ${teamName(g.teamB)}${teamInfoBadge(g.teamB)}
+        </td>
+        <td class="center" style="display:flex; gap:6px; justify-content:center;">${btnA}${btnB}</td>
+        <td class="center">${pick ? `<button class="danger" onclick="clearPrediction('${g.id}')">Clear</button>` : ''}</td>
+      </tr>
+    `;
+  }).join('');
+  const rowsOrEmpty = sorted.length ? rows : `<tr><td colspan="4" class="empty">No upcoming games match this filter.</td></tr>`;
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>Make Your Predictions</h2>
+      <p class="hint">Pick a winner for any upcoming game — picks assume a flat ${PREDICTION_MARGIN}-point margin for ranking-math purposes. Your picks are private to you; they only change what <em>you</em> see on the Rankings tab, never the official schedule. Once the admin enters a real result, your pick for that game stops mattering automatically.</p>
+      <div class="form-row" style="align-items:center;">
+        <div class="field"><label>Week</label><select id="predictWeekFilter" onchange="predictFilterWeek=this.value; renderPredictTab();">${buildWeekFilterOptions(predictFilterWeek)}</select></div>
+        <div class="field"><label>Section</label><select id="predictSectionFilter" onchange="predictFilterSection=this.value; renderPredictTab();">${buildSectionFilterOptions(predictFilterSection)}</select></div>
+        <div class="field"><label>Eligibility</label><select id="predictEligFilter" onchange="predictFilterEligibility=this.value; renderPredictTab();">${buildEligibilityFilterOptions(predictFilterEligibility)}</select></div>
+      </div>
+      <div class="form-row" style="align-items:center;">
+        <button class="ghost" onclick="randomizeWeek()" ${predictFilterWeek==='all' ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''} title="${predictFilterWeek==='all' ? 'Select a specific week first' : ''}">🎲 Randomize Week ${predictFilterWeek!=='all' ? '('+predictFilterWeek+')' : ''}</button>
+        <button class="ghost" onclick="randomizeAllPredictions()">🎲 Randomize All${predictFilterSection!=='all' || predictFilterEligibility!=='all' ? ' (filtered)' : ''}</button>
+        <button class="danger" style="margin-left:auto; ${totalPicked?'':'opacity:0.4; cursor:not-allowed;'}" onclick="clearAllPredictions()" ${totalPicked?'':'disabled'}>Clear ALL my predictions (${totalPicked})</button>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th class="num">Wk</th><th>Matchup</th><th class="center">Your Pick</th><th class="center">—</th></tr></thead>
+          <tbody>${rowsOrEmpty}</tbody>
+        </table>
+      </div>
+      <div class="legend" style="margin-top:14px;">
+        <span>You've picked ${sorted.filter(g=>predictions[g.id]).length} of ${sorted.length} games shown (${totalPicked} total across all weeks/sections)</span>
+      </div>
+    </div>
+  `;
+}
+
+async function setPrediction(gameId, teamId){
+  if (!currentSession || !currentSession.user) return;
+  predictions[gameId] = teamId;
+  renderAll();
+  const { error } = await sb.from('predictions').upsert(
+    { user_id: currentSession.user.id, game_id: gameId, winning_team_id: teamId },
+    { onConflict: 'user_id,game_id' }
+  );
+  if (error) { console.error('Failed to save prediction', error); showToast('Could not save your pick — try again.'); }
+}
+async function clearPrediction(gameId){
+  if (!currentSession || !currentSession.user) return;
+  delete predictions[gameId];
+  renderAll();
+  const { error } = await sb.from('predictions').delete()
+    .eq('user_id', currentSession.user.id).eq('game_id', gameId);
+  if (error) console.error('Failed to clear prediction', error);
+}
+async function clearAllPredictions(){
+  if (!currentSession || !currentSession.user) return;
+  predictions = {};
+  renderAll();
+  const { error } = await sb.from('predictions').delete().eq('user_id', currentSession.user.id);
+  if (error) console.error('Failed to clear predictions', error);
+}
+
+async function resolveCoinFlip(key, winnerId){
+  if (!isAdmin) return;
+  coinFlipResolutions[key] = winnerId;
+  renderAll();
+  const { error } = await sb.from('coin_flips').upsert({ key, winning_team_id: winnerId }, { onConflict: 'key' });
+  if (error) { console.error('Failed to save coin flip', error); showToast('Could not save that — try again.'); }
+}
+async function resetAllCoinFlips(){
+  if (!isAdmin) return;
+  coinFlipResolutions = {};
+  renderAll();
+  const { error } = await sb.from('coin_flips').delete().not('key', 'is', null);
+  if (error) console.error('Failed to reset coin flips', error);
+}
+
+function tbdGamesMatchingPredictFilters(includeWeekFilter){
+  return state.games
+    .filter(g => g.scoreA===null || g.scoreA===undefined || g.scoreB===null || g.scoreB===undefined)
+    .filter(g => !includeWeekFilter || predictFilterWeek==='all' || String(g.week)===String(predictFilterWeek))
+    .filter(g => gameMatchesSection(g, predictFilterSection))
+    .filter(g => predictFilterSection==='all' || !gameBothIneligible(g))
+    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility));
+}
+async function randomizeWeek(){
+  if (predictFilterWeek === 'all') return; // requires a specific week to be selected
+  if (!currentSession || !currentSession.user) return;
+  const targets = tbdGamesMatchingPredictFilters(true);
+  const rows = targets.map(g => {
+    const winner = Math.random() < 0.5 ? g.teamA : g.teamB;
+    predictions[g.id] = winner;
+    return { user_id: currentSession.user.id, game_id: g.id, winning_team_id: winner };
+  });
+  renderAll();
+  if (rows.length){
+    const { error } = await sb.from('predictions').upsert(rows, { onConflict: 'user_id,game_id' });
+    if (error) console.error('Failed to save randomized predictions', error);
+  }
+}
+async function randomizeAllPredictions(){
+  // Ignores the Week filter on purpose (that's the "All" in Randomize All) but still
+  // respects whatever Section/Eligibility filters are active.
+  if (!currentSession || !currentSession.user) return;
+  const targets = tbdGamesMatchingPredictFilters(false);
+  const rows = targets.map(g => {
+    const winner = Math.random() < 0.5 ? g.teamA : g.teamB;
+    predictions[g.id] = winner;
+    return { user_id: currentSession.user.id, game_id: g.id, winning_team_id: winner };
+  });
+  renderAll();
+  if (rows.length){
+    const { error } = await sb.from('predictions').upsert(rows, { onConflict: 'user_id,game_id' });
+    if (error) console.error('Failed to save randomized predictions', error);
+  }
+}
+
+function renderAll(){
+  renderSiteMessage();
+  renderTeamsTab();
+  renderGamesTab();
+  renderPredictTab();
+  renderResultsTab();
+  renderDetailTab();
+}
+
+function renderSiteMessage(){
+  const banner = document.getElementById('siteMessageBanner');
+  const editor = document.getElementById('siteMessageEditor');
+  if (!banner || !editor) return;
+
+  // Public banner: shows only when there's a non-empty message.
+  const msg = (siteMessage || '').trim();
+  if (msg){
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-left:4px solid var(--gold); border-radius:4px; padding:12px 16px; margin-bottom:14px; color:var(--chalk); font-size:14px; line-height:1.5;">
+        <span style="color:var(--gold); font-weight:600; font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:12px; letter-spacing:0.5px; display:block; margin-bottom:4px;">Announcement</span>
+        ${escapeHtml(msg)}
+      </div>`;
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
+
+  // Admin editor: only visible when logged in.
+  if (isAdmin){
+    editor.style.display = 'block';
+    editor.innerHTML = `
+      <div class="panel">
+        <h2>Public Announcement <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+        <p class="hint">Whatever you type here shows as a banner at the top of the site for every visitor. Leave it blank and save to remove the banner.</p>
+        <textarea id="siteMessageInput" rows="3" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'Inter',sans-serif; font-size:13px;" placeholder="e.g. Week 8 rankings are now final.">${escapeHtml(siteMessage || '')}</textarea>
+        <div class="form-row" style="margin-top:10px;">
+          <button onclick="saveSiteMessage()">Save announcement</button>
+          <button class="ghost" onclick="clearSiteMessage()">Clear banner</button>
+        </div>
+      </div>`;
+  } else {
+    editor.style.display = 'none';
+    editor.innerHTML = '';
+  }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function saveSiteMessage(){
+  if (!isAdmin) return;
+  const input = document.getElementById('siteMessageInput');
+  const newMsg = input ? input.value : '';
+  siteMessage = newMsg;
+  renderSiteMessage();
+  const { error } = await sb.from('site_message').update({ message: newMsg, updated_at: new Date().toISOString() }).eq('id', 1);
+  if (error) { console.error('Failed to save announcement', error); showToast('Could not save announcement — try again.'); }
+  else showToast('Announcement saved.');
+}
+async function clearSiteMessage(){
+  if (!isAdmin) return;
+  siteMessage = '';
+  renderSiteMessage();
+  const { error } = await sb.from('site_message').update({ message: '', updated_at: new Date().toISOString() }).eq('id', 1);
+  if (error) { console.error('Failed to clear announcement', error); showToast('Could not clear — try again.'); }
+  else showToast('Banner cleared.');
+}
+
+/* ============================== ACTIONS ============================== */
+
+async function setEligible(teamId, checked){
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  t.ineligible = !checked;
+  renderAll();
+  const { error } = await sb.from('teams').update({ ineligible: t.ineligible }).eq('id', teamId);
+  if (error) { console.error('Failed to update eligibility', error); showToast('Could not save — try again.'); }
+}
+function showToast(msg, type){
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  // Subtle colored left border: red for errors, green for success, neutral otherwise.
+  const isError = /could not|fail|try again/i.test(msg) && type !== 'success';
+  el.style.borderLeft = '4px solid ' + (isError ? 'var(--red)' : 'var(--turf-bright)');
+  el.style.display = 'block';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{ el.style.display='none'; }, 3500);
+}
+async function setTeamName(teamId, value){
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  const newName = value.trim();
+  if (!newName) { renderAll(); return; } // ignore blank, just re-render to restore old value on screen
+  const clash = state.teams.some(o => o.id!==teamId && o.name.toLowerCase()===newName.toLowerCase());
+  if (clash) {
+    showToast('Another team already has that name.');
+    renderAll();
+    return;
+  }
+  t.name = newName;
+  renderAll();
+  const { error } = await sb.from('teams').update({ name: newName }).eq('id', teamId);
+  if (error) { console.error('Failed to rename team', error); showToast('Could not save — try again.'); }
+}
+async function setStartSI(teamId, value){
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  const v = parseFloat(value);
+  if (isNaN(v)) return;
+  t.startSI = v;
+  renderAll();
+  const { error } = await sb.from('teams').update({ start_si: v }).eq('id', teamId);
+  if (error) { console.error('Failed to update SI', error); showToast('Could not save — try again.'); }
+}
+function toggleRegionField(){
+  const group = document.getElementById('newTeamGroup').value;
+  const wrap = document.getElementById('regionFieldWrap');
+  if (wrap) wrap.style.display = (group==='NPA'||group==='NPB') ? 'none' : '';
+}
+async function addTeam(){
+  if (!isAdmin) return;
+  const name = document.getElementById('newTeamName').value.trim();
+  if (!name) return;
+  const group = document.getElementById('newTeamGroup').value;
+  const isNonPublic = group==='NPA' || group==='NPB';
+  const region = isNonPublic ? null : document.getElementById('newTeamRegion').value;
+  const cat = document.getElementById('newTeamCat').value || null;
+  const newTeam = {id: uid('t'), name, category: cat, region, group, startSI: 60, ineligible: false};
+  state.teams.push(newTeam);
+  renderAll();
+  const { error } = await sb.from('teams').insert(localTeamToDb(newTeam));
+  if (error) { console.error('Failed to add team', error); showToast('Could not save — try again.'); }
+}
+
+async function addOutOfStateTeam(){
+  if (!isAdmin) return;
+  const nameEl = document.getElementById('newOOSName');
+  const name = nameEl.value.trim();
+  if (!name) return;
+  const newTeam = {
+    id: uid('t'), name, category: null, region: null, group: 'OOS',
+    startSI: 60,            // admin updates this directly as Gridiron NJ posts values
+    ineligible: true,       // out-of-state/non-member opponents are never rankable
+    isOutOfState: true,
+    manualRecord: {w:0, t:0, l:0}
+  };
+  state.teams.push(newTeam);
+  nameEl.value = '';
+  renderAll();
+  const { error } = await sb.from('teams').insert(localTeamToDb(newTeam));
+  if (error) { console.error('Failed to add out-of-state team', error); showToast('Could not save — try again.'); }
+}
+
+async function setOOSField(teamId, field, value){
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  const v = parseFloat(value);
+  if (isNaN(v)) return;
+  let dbPatch;
+  if (field === 'si'){ t.startSI = v; dbPatch = { start_si: v }; }
+  else {
+    t.manualRecord = t.manualRecord || {w:0,t:0,l:0};
+    t.manualRecord[field] = Math.max(0, Math.round(v));
+    dbPatch = { manual_record: t.manualRecord };
+  }
+  renderAll();
+  const { error } = await sb.from('teams').update(dbPatch).eq('id', teamId);
+  if (error) { console.error('Failed to update out-of-state team', error); showToast('Could not save — try again.'); }
+}
+async function removeTeam(id){
+  if (!isAdmin) return;
+  state.teams = state.teams.filter(t=>t.id!==id);
+  state.games = state.games.filter(g=>g.teamA!==id && g.teamB!==id);
+  renderAll();
+  // Delete dependent games first to satisfy the foreign key, then the team itself.
+  const { error: gamesErr } = await sb.from('games').delete().or(`team_a.eq.${id},team_b.eq.${id}`);
+  if (gamesErr) console.error('Failed to delete dependent games', gamesErr);
+  const { error } = await sb.from('teams').delete().eq('id', id);
+  if (error) { console.error('Failed to delete team', error); showToast('Could not delete — try again.'); }
+}
+async function addGame(){
+  if (!isAdmin) return;
+  const errEl = document.getElementById('addGameError');
+  const week = parseInt(document.getElementById('gWeek').value,10);
+  const teamA = document.getElementById('gTeamA').value;
+  const teamB = document.getElementById('gTeamB').value;
+  const scoreAraw = document.getElementById('gScoreA').value;
+  const scoreBraw = document.getElementById('gScoreB').value;
+  const scoreA = scoreAraw === '' ? null : parseInt(scoreAraw,10);
+  const scoreB = scoreBraw === '' ? null : parseInt(scoreBraw,10);
+  if (teamA===teamB) { if(errEl){errEl.textContent='Team A and Team B must be different.'; errEl.style.display='block';} return; }
+  const newGame = {id: uid('g'), week, teamA, teamB, scoreA, scoreB};
+  state.games.push(newGame);
+  renderAll();
+  const { error } = await sb.from('games').insert(localGameToDb(newGame));
+  if (error) { console.error('Failed to add game', error); showToast('Could not save — try again.'); }
+}
+async function setGameResult(gameId, scoreA, scoreB){
+  const g = state.games.find(g=>g.id===gameId);
+  if (!g) return;
+  g.scoreA = scoreA;
+  g.scoreB = scoreB;
+  renderAll();
+  const { error } = await sb.from('games').update({ score_a: scoreA, score_b: scoreB }).eq('id', gameId);
+  if (error) { console.error('Failed to save result', error); showToast('Could not save — try again.'); }
+}
+function submitGameResult(gameId){
+  const aEl = document.getElementById('res-'+gameId+'-A');
+  const bEl = document.getElementById('res-'+gameId+'-B');
+  const a = parseInt(aEl.value,10), b = parseInt(bEl.value,10);
+  if (isNaN(a) || isNaN(b)) return;
+  setGameResult(gameId, a, b);
+}
+async function removeGame(id){
+  if (!isAdmin) return;
+  state.games = state.games.filter(g=>g.id!==id);
+  renderAll();
+  const { error } = await sb.from('games').delete().eq('id', id);
+  if (error) { console.error('Failed to delete game', error); showToast('Could not delete — try again.'); }
+}
+
+async function bulkSetStartingSI(){
+  if (!isAdmin) return;
+  const textEl = document.getElementById('bulkSIInput');
+  const statusEl = document.getElementById('bulkSIStatus');
+  const lines = textEl.value.split('\n').map(l=>l.trim()).filter(l=>l.length);
+
+  const teamByName = {};
+  state.teams.forEach(t => { teamByName[t.name.toLowerCase()] = t; });
+
+  let updates = [], errors = [];
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (/^team\b/i.test(line)) return; // skip an optional header row
+    const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
+    if (fields.length < 2) { errors.push(`Line ${lineNum}: needs "team name, SI value"`); return; }
+    const value = parseFloat(fields[fields.length-1]);
+    const name = fields.slice(0, -1).join(',').trim();
+    if (isNaN(value)) { errors.push(`Line ${lineNum}: "${fields[fields.length-1]}" isn't a valid number`); return; }
+    const team = teamByName[name.toLowerCase()];
+    if (!team) { errors.push(`Line ${lineNum}: team "${name}" not found`); return; }
+    const rounded = Math.round(value * 100) / 100;
+    team.startSI = rounded;
+    updates.push({ id: team.id, start_si: rounded });
+  });
+
+  renderAll();
+  if (updates.length){
+    const { error } = await sb.from('teams').upsert(updates, { onConflict: 'id' });
+    if (error) { console.error('Bulk SI update failed', error); errors.push('⚠ Database write failed: ' + error.message); }
+  }
+  const log = [`Updated starting SI for ${updates.length} team(s).`];
+  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
+  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
+  if (updates.length && !errors.length) textEl.value = '';
+}
+
+async function bulkAddGames(){
+  if (!isAdmin) return;
+  const textEl = document.getElementById('bulkGamesInput');
+  const statusEl = document.getElementById('bulkAddStatus');
+  const raw = textEl.value;
+  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l.length);
+
+  const nameToId = {};
+  state.teams.forEach(t => { nameToId[t.name.toLowerCase()] = t.id; });
+
+  let newGames = [], dupSkipped = 0, errors = [];
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (/^week\b/i.test(line)) return; // skip an optional header row
+    const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
+    if (fields.length < 3) { errors.push(`Line ${lineNum}: needs at least week, team A, team B`); return; }
+    const week = parseInt(fields[0], 10);
+    if (isNaN(week)) { errors.push(`Line ${lineNum}: "${fields[0]}" isn't a valid week number`); return; }
+    const teamAId = nameToId[fields[1].toLowerCase()];
+    const teamBId = nameToId[fields[2].toLowerCase()];
+    if (!teamAId) { errors.push(`Line ${lineNum}: team "${fields[1]}" not found`); return; }
+    if (!teamBId) { errors.push(`Line ${lineNum}: team "${fields[2]}" not found`); return; }
+    let scoreA = null, scoreB = null;
+    if (fields.length >= 5 && fields[3] !== '' && fields[4] !== '') {
+      const a = parseInt(fields[3],10), b = parseInt(fields[4],10);
+      if (!isNaN(a) && !isNaN(b)) { scoreA = a; scoreB = b; }
+    }
+    const dup = state.games.some(g => g.week===week &&
+      ((g.teamA===teamAId && g.teamB===teamBId) || (g.teamA===teamBId && g.teamB===teamAId)));
+    if (dup || newGames.some(g => g.week===week && ((g.teamA===teamAId&&g.teamB===teamBId)||(g.teamA===teamBId&&g.teamB===teamAId)))) {
+      dupSkipped++; return;
+    }
+    newGames.push({id: uid('g'), week, teamA: teamAId, teamB: teamBId, scoreA, scoreB});
+  });
+
+  newGames.forEach(g => state.games.push(g));
+  renderAll();
+  if (newGames.length){
+    const { error } = await sb.from('games').insert(newGames.map(localGameToDb));
+    if (error) { console.error('Bulk game add failed', error); errors.push('⚠ Database write failed: ' + error.message); }
+  }
+  const log = [`Added ${newGames.length} game(s).`];
+  if (dupSkipped) log.push(`Skipped ${dupSkipped} duplicate(s) already in the schedule.`);
+  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
+  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
+  if (newGames.length && !errors.length) textEl.value = '';
+}
+
+function toggleWipeConfirm(){
+  const checked = document.getElementById('wipeConfirmCheck').checked;
+  const btn = document.getElementById('wipeScheduleBtn');
+  btn.disabled = !checked;
+  btn.style.opacity = checked ? '1' : '0.4';
+  btn.style.cursor = checked ? 'pointer' : 'not-allowed';
+}
+async function wipeEntireSchedule(){
+  if (!isAdmin) return;
+  const checkbox = document.getElementById('wipeConfirmCheck');
+  if (!checkbox || !checkbox.checked) return;
+  state.games = [];
+  checkbox.checked = false;
+  renderAll();
+  const { error } = await sb.from('games').delete().gte('week', 0);
+  if (error) { console.error('Failed to wipe schedule', error); showToast('Wipe failed — try again.'); }
+}
+
+function openDetail(teamId){
+  selectedDetailTeam = teamId;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('.tab[data-tab="detail"]').classList.add('active');
+  document.querySelectorAll('.tabview').forEach(v=>v.style.display='none');
+  document.getElementById('tab-detail').style.display='block';
+  renderDetailTab();
+}
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.tabview').forEach(v=>v.style.display='none');
+    document.getElementById('tab-'+btn.dataset.tab).style.display='block';
+  });
+});
+
+document.querySelectorAll('.tabview').forEach(v => {
+  v.innerHTML = `<div class="panel"><p class="empty">Loading…</p></div>`;
+});
+bootstrap();
+</script>
+</body>
+</html>
