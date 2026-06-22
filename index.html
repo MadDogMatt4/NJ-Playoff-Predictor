@@ -1625,22 +1625,23 @@ function renderBracketTab(){
     return;
   }
 
-  const matchupHtml = (m) => {
+  const matchupHtml = (m, useLocalSlot) => {
     const teamLine = (entry) => {
       if (!entry || !entry.team) return `<div class="bk-team"><span class="bk-seed">—</span> <span>TBD</span></div>`;
+      const seedNum = useLocalSlot ? entry.localSlot : entry.overallSeed;
       return `<div class="bk-team">
-        <span class="bk-seed">${entry.overallSeed}</span>
+        <span class="bk-seed">${seedNum}</span>
         <span class="bk-name">${entry.team.name}</span>
       </div>`;
     };
     return `<div class="bk-matchup">${teamLine(m.high)}${teamLine(m.low)}</div>`;
   };
 
-  const bracketColumn = (bracket, showAnchor) => `
+  const bracketColumn = (bracket, showAnchor, useLocalSlot) => `
     <div class="bk-col">
       <div class="bk-col-title">${bracket.label}</div>
       ${showAnchor ? `<div class="bk-col-sub">Top seed: ${bracket.anchor ? bracket.anchor.name : '—'}</div>` : ''}
-      ${bracket.matchups.map(m => matchupHtml(m)).join('')}
+      ${bracket.matchups.map(m => matchupHtml(m, useLocalSlot)).join('')}
     </div>`;
 
   if (brackets.type === 'single'){
@@ -1648,7 +1649,7 @@ function renderBracketTab(){
       <div class="panel">
         <p style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-radius:4px; padding:8px 12px; font-size:12.5px; color:var(--gold); margin:0 0 16px;">⚖ Committee-seeded — the bracket below orders teams by UPR for reference only.</p>
         <div class="bk-wrap">
-          ${bracketColumn(brackets, false)}
+          ${bracketColumn(brackets, false, false)}
         </div>
         <p class="hint" style="margin-top:16px; margin-bottom:0;">Numbers shown are UPR seeds. First-round pairing follows standard bracket structure (1 vs ${brackets.slots.length}, and so on toward the middle).</p>
       </div>`;
@@ -1658,10 +1659,10 @@ function renderBracketTab(){
   el.innerHTML = header + `
     <div class="panel">
       <div class="bk-wrap">
-        ${bracketColumn(brackets.bracket1, true)}
-        ${bracketColumn(brackets.bracket2, true)}
+        ${bracketColumn(brackets.bracket1, true, true)}
+        ${bracketColumn(brackets.bracket2, true, true)}
       </div>
-      <p class="hint" style="margin-top:16px; margin-bottom:0;">Each bracket's first-round games pair local seeds 1v8, 4v5, 3v6, 2v7. Numbers shown are overall supersection seeds. Once a supersection splits into these two brackets, no further head-to-head movement occurs.</p>
+      <p class="hint" style="margin-top:16px; margin-bottom:0;">Each bracket is seeded 1–8, pairing 1v8, 4v5, 3v6, 2v7. Once a supersection splits into these two brackets, no further head-to-head movement occurs.</p>
     </div>`;
 }
 
