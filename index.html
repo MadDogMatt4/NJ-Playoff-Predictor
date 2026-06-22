@@ -316,6 +316,7 @@ let predictFilterWeek = 'all';
 let predictFilterSection = 'all';
 let predictFilterEligibility = 'all';
 let teamsSortMode = 'section'; // 'section' or 'name'
+let editingGames = {}; // {gameId: true} — which completed games admin is currently editing
 
 async function submitAdminLogin(){
   const emailEl = document.getElementById('adminEmailInput');
@@ -1388,8 +1389,19 @@ function renderGamesTab(){
     const isTBD = g.scoreA === null || g.scoreB === null;
     const myPick = predictions[g.id];
     let scoreCell;
-    if (!isTBD) {
-      scoreCell = `<td class="num">${g.scoreA}</td><td class="center">–</td><td class="num">${g.scoreB}</td>`;
+    if (!isTBD && isAdmin && editingGames[g.id]) {
+      // Admin is editing a completed result.
+      scoreCell = `<td class="num" colspan="3" style="text-align:center;">
+        <input type="number" min="0" value="${g.scoreA}" style="width:55px" id="res-${g.id}-A">
+        <span style="color:var(--chalk-dim);">–</span>
+        <input type="number" min="0" value="${g.scoreB}" style="width:55px" id="res-${g.id}-B">
+        <button class="ghost" style="padding:4px 8px; font-size:11px;" onclick="submitGameResult('${g.id}')">Save</button>
+        <button class="ghost" style="padding:4px 8px; font-size:11px;" onclick="cancelEditGame('${g.id}')">Cancel</button>
+        <button class="ghost" style="padding:4px 8px; font-size:11px; color:var(--chalk-dim);" onclick="resetGameToTBD('${g.id}')">Clear result</button>
+      </td>`;
+    } else if (!isTBD) {
+      // Completed result. Admins get an Edit button to correct it.
+      scoreCell = `<td class="num">${g.scoreA}</td><td class="center">–</td><td class="num">${g.scoreB}${isAdmin ? ` <button class="ghost" style="padding:2px 7px; font-size:10px; margin-left:6px;" onclick="startEditGame('${g.id}')">Edit</button>` : ''}</td>`;
     } else if (isAdmin) {
       scoreCell = `<td class="num" colspan="3" style="text-align:center;">
         <span style="color:var(--chalk-dim); font-size:11px;">TBD —</span>
@@ -2115,6 +2127,7 @@ async function setGameResult(gameId, scoreA, scoreB){
   if (!g) return;
   g.scoreA = scoreA;
   g.scoreB = scoreB;
+  delete editingGames[gameId]; // exit edit mode once saved
   renderAll();
   const { error } = await sb.from('games').update({ score_a: scoreA, score_b: scoreB }).eq('id', gameId);
   if (error) { console.error('Failed to save result', error); showToast('Could not save — try again.'); }
@@ -2125,6 +2138,26 @@ function submitGameResult(gameId){
   const a = parseInt(aEl.value,10), b = parseInt(bEl.value,10);
   if (isNaN(a) || isNaN(b)) return;
   setGameResult(gameId, a, b);
+}
+function startEditGame(gameId){
+  if (!isAdmin) return;
+  editingGames[gameId] = true;
+  renderGamesTab();
+}
+function cancelEditGame(gameId){
+  delete editingGames[gameId];
+  renderGamesTab();
+}
+async function resetGameToTBD(gameId){
+  if (!isAdmin) return;
+  const g = state.games.find(g=>g.id===gameId);
+  if (!g) return;
+  g.scoreA = null;
+  g.scoreB = null;
+  delete editingGames[gameId];
+  renderAll();
+  const { error } = await sb.from('games').update({ score_a: null, score_b: null }).eq('id', gameId);
+  if (error) { console.error('Failed to reset game', error); showToast('Could not clear — try again.'); }
 }
 async function removeGame(id){
   if (!isAdmin) return;
