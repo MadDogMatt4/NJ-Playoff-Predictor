@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NJ UPR Calculator — Multi-Section</title>
+<title>NJ Football Playoff Predictor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -201,6 +201,27 @@
     margin-left:6px;
     cursor:help;
   }
+  .bk-wrap{ display:flex; gap:28px; flex-wrap:wrap; }
+  .bk-col{ flex:1; min-width:260px; }
+  .bk-col-title{
+    font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.5px;
+    font-size:15px; color:var(--gold); border-bottom:2px solid var(--gold-dim);
+    padding-bottom:6px; margin-bottom:4px;
+  }
+  .bk-col-sub{ font-size:11.5px; color:var(--chalk-dim); margin-bottom:14px; font-family:'IBM Plex Mono',monospace; }
+  .bk-matchup{
+    border:1px solid var(--line); border-radius:6px; margin-bottom:12px; overflow:hidden;
+    background:var(--panel-raised);
+  }
+  .bk-team{
+    display:flex; align-items:center; gap:10px; padding:9px 12px; font-size:13px;
+  }
+  .bk-team:first-child{ border-bottom:1px solid var(--line); }
+  .bk-seed{
+    font-family:'Oswald', sans-serif; font-weight:600; color:var(--gold);
+    min-width:22px; text-align:center; font-size:13px;
+  }
+  .bk-name{ font-family:'Inter',sans-serif; color:var(--chalk); }
 
   .legend{ display:flex; gap:18px; flex-wrap:wrap; font-size:11.5px; color:var(--chalk-dim); margin-top:10px; }
   .legend span.dot{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
@@ -223,8 +244,8 @@
 
   <div class="masthead">
     <div>
-      <h1>UPR <span>Calculator</span></h1>
-      <div class="sub">United Power Ranking — prototype engine</div>
+      <h1>NJ Football <span>Playoff Predictor</span></h1>
+      <div class="sub">United Power Ranking system</div>
     </div>
     <div class="scope-badge" id="scopeBadge">Statewide · All Groups</div>
     <div id="adminControl" style="display:flex; align-items:center; gap:6px; margin-left:10px; flex-wrap:wrap;">
@@ -247,6 +268,7 @@
     <button class="tab" data-tab="games">Games</button>
     <button class="tab" data-tab="predict">Predict</button>
     <button class="tab" data-tab="results">Rankings</button>
+    <button class="tab" data-tab="bracket">Bracket</button>
     <button class="tab" data-tab="detail">Team Detail</button>
   </div>
 
@@ -254,6 +276,7 @@
   <div id="tab-games" class="tabview" style="display:none;"></div>
   <div id="tab-predict" class="tabview" style="display:none;"></div>
   <div id="tab-results" class="tabview" style="display:none;"></div>
+  <div id="tab-bracket" class="tabview" style="display:none;"></div>
   <div id="tab-detail" class="tabview" style="display:none;"></div>
 
 </div>
@@ -283,6 +306,7 @@ let nextTeamId = 1;
 let nextGameId = 1;
 let selectedDetailTeam = null;
 let selectedSection = null; // {region, group} string key, set on first render
+let selectedBracketSection = null; // separate selector for the Bracket tab
 let isAdmin = false;
 let currentSession = null; // Supabase auth session (anonymous visitor or logged-in admin)
 let gamesFilterWeek = 'all';
@@ -466,7 +490,8 @@ function dbTeamToLocal(row){
     region: row.region, group: row.team_group,
     startSI: row.start_si, ineligible: row.ineligible,
     isOutOfState: row.is_out_of_state,
-    manualRecord: row.manual_record || { w:0, t:0, l:0 }
+    manualRecord: row.manual_record || { w:0, t:0, l:0 },
+    northing: (row.northing === null || row.northing === undefined) ? null : row.northing
   };
 }
 function localTeamToDb(t){
@@ -474,7 +499,8 @@ function localTeamToDb(t){
     id: t.id, name: t.name, category: t.category,
     region: t.region, team_group: t.group,
     start_si: t.startSI, ineligible: t.ineligible,
-    is_out_of_state: t.isOutOfState, manual_record: t.manualRecord
+    is_out_of_state: t.isOutOfState, manual_record: t.manualRecord,
+    northing: (t.northing === null || t.northing === undefined) ? null : t.northing
   };
 }
 function dbGameToLocal(row){
@@ -1048,8 +1074,96 @@ function computeUPR(sectionFilterKey){
   const qualifiedIds = new Set(top16.map(t=>t.id));
 
   return { ranked, osiTotal, ppTotal, osiRank, ppRank, uprScore, tieFlags, tiebreakerLog, jumped,
-           qualifiedIds, autoQualifiedIn, autoEliminated,
+           qualifiedIds, autoQualifiedIn, autoEliminated, top16,
            lockedSI, lockedSI_floored, finalCat, ppGameLog, osiGameLog };
+}
+
+// Builds the two 8-team sectional brackets from a resolved top-16 seeding list.
+// Placement (overall seed -> local slot) per NJSIAA snake:
+//   #1 seed's bracket: slots 1-8 = overall seeds 1,4,5,8,9,12,13,16
+//   #2 seed's bracket: slots 1-8 = overall seeds 2,3,6,7,10,11,14,15
+// Within each bracket, first-round matchups are slot 1v8, 4v5, 3v6, 2v7.
+// Northing decides which physical bracket label each #1-seed anchors: the higher
+// northing of the two top seeds anchors the N1/Central bracket.
+// Standard single-elimination first-round pairing for a power-of-two seed list,
+// by local slot: e.g. 8 teams -> 1v8,4v5,3v6,2v7 ; 16 teams -> 1v16,8v9,5v12,4v13,3v14,6v11,7v10,2v15.
+function standardPairing(n){
+  // Recursively build the seed order so favorites meet last. Returns slot pairs.
+  function buildOrder(size){
+    if (size === 1) return [1];
+    const prev = buildOrder(size/2);
+    const out = [];
+    prev.forEach(s => { out.push(s); out.push(size + 1 - s); });
+    return out;
+  }
+  const order = buildOrder(n); // flat seed order; consecutive pairs are matchups
+  const pairs = [];
+  for (let i=0; i<order.length; i+=2) pairs.push([order[i], order[i+1]]);
+  return pairs;
+}
+
+// Returns one of:
+//   { type:'split', bracket1, bracket2, northingKnown }              (public North/South)
+//   { type:'single', label, committeeSeeded, slots, matchups }       (non-public)
+//   null                                                              (not enough teams)
+function buildBrackets(seededField, region, group){
+  const isNonPublic = (group === 'NPA' || group === 'NPB');
+
+  if (isNonPublic){
+    const size = (group === 'NPA') ? 8 : 16;
+    if (!seededField || seededField.length < size) return null;
+    const slots = [];
+    for (let i=0;i<size;i++) slots.push({ localSlot:i+1, overallSeed:i+1, team: seededField[i] });
+    const pairs = standardPairing(size).map(([a,b]) => ({
+      high: slots.find(x=>x.localSlot===a),
+      low:  slots.find(x=>x.localSlot===b)
+    }));
+    return {
+      type: 'single',
+      label: (group === 'NPA') ? 'Non-Public A' : 'Non-Public B',
+      committeeSeeded: true,
+      slots, matchups: pairs
+    };
+  }
+
+  // Public supersection: two 8-team snake brackets.
+  if (!seededField || seededField.length < 16) return null;
+  const BRACKET1_SEEDS = [1,4,5,8,9,12,13,16];   // overall seeds, in local slot order 1..8
+  const BRACKET2_SEEDS = [2,3,6,7,10,11,14,15];
+  const seedToTeam = (overallSeed) => seededField[overallSeed-1];
+
+  const b1 = BRACKET1_SEEDS.map((s,i) => ({ localSlot:i+1, overallSeed:s, team: seedToTeam(s) }));
+  const b2 = BRACKET2_SEEDS.map((s,i) => ({ localSlot:i+1, overallSeed:s, team: seedToTeam(s) }));
+
+  // Label pair depends on the supersection's region.
+  const isSouth = (region === 'South');
+  const firstLabel = isSouth ? 'Central' : 'North 1';
+  const secondLabel = isSouth ? 'South' : 'North 2';
+
+  // Higher northing among the two top seeds anchors the FIRST bracket (North 1 / Central).
+  const seed1 = seedToTeam(1), seed2 = seedToTeam(2);
+  const n1 = (seed1 && typeof seed1.northing === 'number') ? seed1.northing : null;
+  const n2 = (seed2 && typeof seed2.northing === 'number') ? seed2.northing : null;
+  const northingKnown = (n1 !== null && n2 !== null);
+
+  // Default: bracket built from BRACKET1_SEEDS is anchored by overall #1 seed; if northing
+  // says overall #2 is actually further north, the LABELS swap (so the geographically-north
+  // bracket is North 1 / Central) while the seed structure stays fixed.
+  let bracket1Label = firstLabel, bracket2Label = secondLabel;
+  if (northingKnown && n2 > n1){ bracket1Label = secondLabel; bracket2Label = firstLabel; }
+
+  const PAIRS = [[1,8],[4,5],[3,6],[2,7]];
+  const pairUp = (slots) => PAIRS.map(([a,b]) => ({
+    high: slots.find(x=>x.localSlot===a),
+    low:  slots.find(x=>x.localSlot===b)
+  }));
+
+  return {
+    type: 'split',
+    northingKnown,
+    bracket1: { label: bracket1Label, anchor: seed1, slots: b1, matchups: pairUp(b1) },
+    bracket2: { label: bracket2Label, anchor: seed2, slots: b2, matchups: pairUp(b2) }
+  };
 }
 
 /* ============================== RENDERING ============================== */
@@ -1095,11 +1209,12 @@ function renderTeamsTab(){
       </td>
       ${isAdmin ? `
         <td class="num"><input type="number" step="0.01" value="${t.startSI}" style="width:80px" onchange="setStartSI('${t.id}', this.value)"></td>
+        <td class="num"><input type="number" step="0.01" value="${t.northing ?? ''}" placeholder="—" style="width:80px" onchange="setNorthing('${t.id}', this.value)"></td>
         <td class="center"><button class="danger" onclick="removeTeam('${t.id}')">Remove</button></td>
       ` : ''}
     </tr>
   `).join('');
-  if (!njTeams.length) rows = `<tr><td colspan="${isAdmin?7:5}" class="empty">No teams yet.</td></tr>`;
+  if (!njTeams.length) rows = `<tr><td colspan="${isAdmin?8:5}" class="empty">No teams yet.</td></tr>`;
 
   const bulkSIPanel = isAdmin ? `
     <div class="panel">
@@ -1110,6 +1225,18 @@ function renderTeamsTab(){
         <button onclick="bulkSetStartingSI()">Apply Starting SI</button>
       </div>
       <div id="bulkSIStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  ` : '';
+
+  const bulkNorthingPanel = isAdmin ? `
+    <div class="panel">
+      <h2>Bulk Set Northing <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">One team per line: <code>team name, northing value</code>. Northing decides which of a supersection's top two seeds anchors the N1/Central bracket (higher northing = further north). Same paste format as the SI tool.</p>
+      <textarea id="bulkNorthingInput" rows="6" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="Old Tappan, 4512000&#10;Cranford, 4498000"></textarea>
+      <div class="form-row" style="margin-top:10px;">
+        <button onclick="bulkSetNorthing()">Apply Northing</button>
+      </div>
+      <div id="bulkNorthingStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
     </div>
   ` : '';
 
@@ -1207,13 +1334,14 @@ function renderTeamsTab(){
       <div class="table-scroll">
         <table>
           <thead><tr><th>Team</th><th>Section</th><th class="center">Category</th><th class="num">Games</th><th class="center">Eligible</th>
-            ${isAdmin ? '<th class="num">Start SI</th><th class="center">—</th>' : ''}
+            ${isAdmin ? '<th class="num">Start SI</th><th class="num">Northing</th><th class="center">—</th>' : ''}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
     ${bulkSIPanel}
+    ${bulkNorthingPanel}
     ${oosPanel}
   `;
 }
@@ -1444,6 +1572,99 @@ function renderResultsTab(){
   `;
 }
 
+function renderBracketTab(){
+  const el = document.getElementById('tab-bracket');
+  const sections = getAllSections();
+  if (!sections.length){
+    el.innerHTML = `<div class="panel"><p class="empty">No sections yet.</p></div>`;
+    return;
+  }
+  if (!selectedBracketSection || !sections.some(s=>sectionKey(s.region,s.group)===selectedBracketSection)){
+    selectedBracketSection = sectionKey(sections[0].region, sections[0].group);
+  }
+  const sectionOptions = sections.map(s => {
+    const key = sectionKey(s.region,s.group);
+    return `<option value="${key}" ${key===selectedBracketSection?'selected':''}>${s.label}</option>`;
+  }).join('');
+
+  const selSection = sections.find(s => sectionKey(s.region,s.group)===selectedBracketSection);
+  const region = selSection ? selSection.region : null;
+  const group = selSection ? selSection.group : null;
+  const isNonPublic = (group === 'NPA' || group === 'NPB');
+
+  const r = computeUPR(selectedBracketSection);
+  // top16 is the resolved, seeded field (tiebreakers + auto-qualifiers applied). For NPA the
+  // bracket is only the top 8 of that; NPB and publics use the full 16.
+  const field = (group === 'NPA') ? (r.top16 ? r.top16.slice(0,8) : []) : r.top16;
+  const brackets = buildBrackets(field, region, group);
+
+  const needLabel = isNonPublic ? (group==='NPA' ? '8' : '16') : '16';
+  const haveCount = r.top16 ? (group==='NPA' ? Math.min(r.top16.length,8) : r.top16.length) : 0;
+
+  const projNote = hasAnyProjectedGames() ? `<p style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-radius:4px; padding:8px 12px; font-size:12.5px; color:var(--gold); margin:0 0 4px;">⚡ This bracket reflects your own predictions for not-yet-played games.</p>` : '';
+
+  let hintText;
+  if (isNonPublic){
+    hintText = `Non-public teams are <strong>seeded by committee</strong>, not by this bracket — the order shown here is the UPR ranking as a reference only, and the actual tournament seeding may differ.`;
+  } else {
+    hintText = `Seeding uses the final resolved top 16 (after tiebreakers, head-to-head, and auto-qualifiers), split into two 8-team brackets via the NJSIAA snake.${brackets && brackets.type==='split' && !brackets.northingKnown ? ' <strong>Northing not set for the top two seeds — bracket labels may be reversed until you add northing on the Teams tab.</strong>' : ''}`;
+  }
+
+  const header = `
+    <div class="panel">
+      <h2>Tournament Bracket</h2>
+      <div class="form-row">
+        <div class="field"><label>Section</label><select id="bracketSectionSelect" onchange="selectedBracketSection=this.value; renderBracketTab();">${sectionOptions}</select></div>
+      </div>
+      ${projNote}
+      <p class="hint">${hintText}</p>
+    </div>`;
+
+  if (!brackets){
+    el.innerHTML = header + `<div class="panel"><p class="empty">This section needs a full field of ${needLabel} qualified teams before a bracket can be seeded. (${haveCount} currently qualified.)</p></div>`;
+    return;
+  }
+
+  const matchupHtml = (m) => {
+    const teamLine = (entry) => {
+      if (!entry || !entry.team) return `<div class="bk-team"><span class="bk-seed">—</span> <span>TBD</span></div>`;
+      return `<div class="bk-team">
+        <span class="bk-seed">${entry.overallSeed}</span>
+        <span class="bk-name">${entry.team.name}</span>
+      </div>`;
+    };
+    return `<div class="bk-matchup">${teamLine(m.high)}${teamLine(m.low)}</div>`;
+  };
+
+  const bracketColumn = (bracket, showAnchor) => `
+    <div class="bk-col">
+      <div class="bk-col-title">${bracket.label}</div>
+      ${showAnchor ? `<div class="bk-col-sub">Top seed: ${bracket.anchor ? bracket.anchor.name : '—'}</div>` : ''}
+      ${bracket.matchups.map(m => matchupHtml(m)).join('')}
+    </div>`;
+
+  if (brackets.type === 'single'){
+    el.innerHTML = header + `
+      <div class="panel">
+        <p style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-radius:4px; padding:8px 12px; font-size:12.5px; color:var(--gold); margin:0 0 16px;">⚖ Committee-seeded — the bracket below orders teams by UPR for reference only.</p>
+        <div class="bk-wrap">
+          ${bracketColumn(brackets, false)}
+        </div>
+        <p class="hint" style="margin-top:16px; margin-bottom:0;">Numbers shown are UPR seeds. First-round pairing follows standard bracket structure (1 vs ${brackets.slots.length}, and so on toward the middle).</p>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = header + `
+    <div class="panel">
+      <div class="bk-wrap">
+        ${bracketColumn(brackets.bracket1, true)}
+        ${bracketColumn(brackets.bracket2, true)}
+      </div>
+      <p class="hint" style="margin-top:16px; margin-bottom:0;">Each bracket's first-round games pair local seeds 1v8, 4v5, 3v6, 2v7. Numbers shown are overall supersection seeds. Once a supersection splits into these two brackets, no further head-to-head movement occurs.</p>
+    </div>`;
+}
+
 function renderDetailTab(){
   const el = document.getElementById('tab-detail');
   if (!state.teams.length){
@@ -1661,6 +1882,7 @@ function renderAll(){
   renderGamesTab();
   renderPredictTab();
   renderResultsTab();
+  renderBracketTab();
   renderDetailTab();
 }
 
@@ -1772,6 +1994,17 @@ async function setStartSI(teamId, value){
   const { error } = await sb.from('teams').update({ start_si: v }).eq('id', teamId);
   if (error) { console.error('Failed to update SI', error); showToast('Could not save — try again.'); }
 }
+async function setNorthing(teamId, value){
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  const trimmed = String(value).trim();
+  const v = trimmed === '' ? null : parseFloat(trimmed);
+  if (trimmed !== '' && isNaN(v)) return;
+  t.northing = v;
+  renderAll();
+  const { error } = await sb.from('teams').update({ northing: v }).eq('id', teamId);
+  if (error) { console.error('Failed to update northing', error); showToast('Could not save — try again.'); }
+}
 function toggleRegionField(){
   const group = document.getElementById('newTeamGroup').value;
   const wrap = document.getElementById('regionFieldWrap');
@@ -1877,6 +2110,41 @@ async function removeGame(id){
   renderAll();
   const { error } = await sb.from('games').delete().eq('id', id);
   if (error) { console.error('Failed to delete game', error); showToast('Could not delete — try again.'); }
+}
+
+async function bulkSetNorthing(){
+  if (!isAdmin) return;
+  const textEl = document.getElementById('bulkNorthingInput');
+  const statusEl = document.getElementById('bulkNorthingStatus');
+  const lines = textEl.value.split('\n').map(l=>l.trim()).filter(l=>l.length);
+
+  const teamByName = {};
+  state.teams.forEach(t => { teamByName[t.name.toLowerCase()] = t; });
+
+  let updates = [], errors = [];
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (/^team\b/i.test(line)) return; // skip an optional header row
+    const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
+    if (fields.length < 2) { errors.push(`Line ${lineNum}: needs "team name, northing value"`); return; }
+    const value = parseFloat(fields[fields.length-1]);
+    const name = fields.slice(0, -1).join(',').trim();
+    if (isNaN(value)) { errors.push(`Line ${lineNum}: "${fields[fields.length-1]}" isn't a valid number`); return; }
+    const team = teamByName[name.toLowerCase()];
+    if (!team) { errors.push(`Line ${lineNum}: team "${name}" not found`); return; }
+    team.northing = value;
+    updates.push({ id: team.id, northing: value });
+  });
+
+  renderAll();
+  if (updates.length){
+    const { error } = await sb.from('teams').upsert(updates, { onConflict: 'id' });
+    if (error) { console.error('Bulk northing update failed', error); errors.push('⚠ Database write failed: ' + error.message); }
+  }
+  const log = [`Updated northing for ${updates.length} team(s).`];
+  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
+  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
+  if (updates.length && !errors.length) textEl.value = '';
 }
 
 async function bulkSetStartingSI(){
