@@ -245,7 +245,7 @@
   <div class="masthead">
     <div>
       <h1>NJ Football <span>Playoff Predictor</span></h1>
-      <div class="sub">United Power Ranking system <span style="color:var(--gold); font-family:'IBM Plex Mono',monospace; font-size:10px;">build-2026-06-22-BRACKET</span></div>
+      <div class="sub">United Power Ranking system</div>
     </div>
     <div class="scope-badge" id="scopeBadge">Statewide · All Groups</div>
     <div id="adminControl" style="display:flex; align-items:center; gap:6px; margin-left:10px; flex-wrap:wrap;">
@@ -315,6 +315,7 @@ let gamesFilterEligibility = 'all';
 let predictFilterWeek = 'all';
 let predictFilterSection = 'all';
 let predictFilterEligibility = 'all';
+let teamsSortMode = 'section'; // 'section' or 'name'
 
 async function submitAdminLogin(){
   const emailEl = document.getElementById('adminEmailInput');
@@ -1189,8 +1190,20 @@ function teamInfoBadge(id){
 
 function renderTeamsTab(){
   const el = document.getElementById('tab-teams');
-  const njTeams = state.teams.filter(t => !t.isOutOfState);
+  let njTeams = state.teams.filter(t => !t.isOutOfState);
   const oosTeams = state.teams.filter(t => t.isOutOfState);
+
+  // Apply the chosen sort.
+  const sectionRank = (t) => {
+    if (t.group === 'NPA') return 1000;
+    if (t.group === 'NPB') return 1001;
+    return (t.region === 'North' ? 0 : 100) + Number(t.group);
+  };
+  if (teamsSortMode === 'name'){
+    njTeams = [...njTeams].sort((a,b) => a.name.localeCompare(b.name));
+  } else { // 'section' — group by supersection, then alphabetical within each
+    njTeams = [...njTeams].sort((a,b) => sectionRank(a) - sectionRank(b) || a.name.localeCompare(b.name));
+  }
 
   let rows = njTeams.map(t => `
     <tr>
@@ -1331,6 +1344,14 @@ function renderTeamsTab(){
     ${addTeamPanel}
     <div class="panel">
       <h2>Teams (${njTeams.length})</h2>
+      <div class="form-row">
+        <div class="field"><label>Sort by</label>
+          <select id="teamsSortSelect" onchange="teamsSortMode=this.value; renderTeamsTab();">
+            <option value="section" ${teamsSortMode==='section'?'selected':''}>Section</option>
+            <option value="name" ${teamsSortMode==='name'?'selected':''}>Team name (A–Z)</option>
+          </select>
+        </div>
+      </div>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Team</th><th>Section</th><th class="center">Category</th><th class="num">Games</th><th class="center">Eligible</th>
