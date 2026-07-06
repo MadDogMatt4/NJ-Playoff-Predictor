@@ -1471,7 +1471,7 @@ function renderGamesTab(){
       <div id="addGameError" style="display:none; color:var(--red); font-size:12px; margin-top:6px;"></div>
     </div>
     <div class="panel">
-      <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span> <span style="color:var(--turf-bright); font-family:'IBM Plex Mono',monospace; font-size:10px;">v-DETAIL-REPORT</span></h2>
+      <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
       <p class="hint">One game per line: <code>week, team A name, team B name</code> — or include scores: <code>week, team A, team B, score A, score B</code>. Leave scores off (or blank) for a TBD game. Works with comma- or tab-separated lines (so pasting straight from a spreadsheet works), and a header row starting with "Week" is ignored automatically. Team names must exactly match an existing team (case-insensitive) — add any missing teams or out-of-state opponents first. Duplicate week+matchup entries are skipped automatically.</p>
       <textarea id="bulkGamesInput" rows="8" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="0, Old Tappan, Cranford&#10;0, West Morris, Summit, 21, 14"></textarea>
       <div class="form-row" style="margin-top:10px;">
@@ -2221,15 +2221,18 @@ async function bulkSetNorthing(){
     updates.push({ id: team.id, northing: value });
   });
 
-  renderAll();
   if (updates.length){
     const { error } = await sb.from('teams').upsert(updates, { onConflict: 'id' });
     if (error) { console.error('Bulk northing update failed', error); errors.push('⚠ Database write failed: ' + error.message); }
   }
   const log = [`Updated northing for ${updates.length} team(s).`];
   if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
-  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
-  if (updates.length && !errors.length) textEl.value = '';
+  const keepText = errors.length > 0;
+  renderAll();
+  const liveStatus = document.getElementById('bulkNorthingStatus');
+  if (liveStatus) { liveStatus.style.display='block'; liveStatus.innerHTML = log.join('<br>'); }
+  const liveText = document.getElementById('bulkNorthingInput');
+  if (liveText && !keepText) liveText.value = '';
 }
 
 async function bulkSetStartingSI(){
@@ -2257,15 +2260,18 @@ async function bulkSetStartingSI(){
     updates.push({ id: team.id, start_si: rounded });
   });
 
-  renderAll();
   if (updates.length){
     const { error } = await sb.from('teams').upsert(updates, { onConflict: 'id' });
     if (error) { console.error('Bulk SI update failed', error); errors.push('⚠ Database write failed: ' + error.message); }
   }
   const log = [`Updated starting SI for ${updates.length} team(s).`];
   if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
-  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
-  if (updates.length && !errors.length) textEl.value = '';
+  const keepText = errors.length > 0;
+  renderAll();
+  const liveStatus = document.getElementById('bulkSIStatus');
+  if (liveStatus) { liveStatus.style.display='block'; liveStatus.innerHTML = log.join('<br>'); }
+  const liveText = document.getElementById('bulkSIInput');
+  if (liveText && !keepText) liveText.value = '';
 }
 
 async function bulkAddGames(){
@@ -2309,15 +2315,15 @@ async function bulkAddGames(){
     newGames.push({id: uid('g'), week, teamA: teamAId, teamB: teamBId, scoreA, scoreB});
   });
 
+  // Persist the new games first (before re-rendering), so state and DB agree.
   newGames.forEach(g => state.games.push(g));
-  renderAll();
   let writeError = null;
   if (newGames.length){
     writeError = await writeInChunks('games', newGames.map(localGameToDb));
   }
   addedCount = newGames.length;
 
-  // Build the results report.
+  // Build the results report text.
   const log = [`<strong>Added ${addedCount} game(s).</strong>`];
   if (writeError){
     log.push(`<span style="color:var(--red);">⚠ Database write failed — these may not have saved: ${writeError.message}</span>`);
@@ -2330,10 +2336,19 @@ async function bulkAddGames(){
   } else if (addedCount > 0) {
     log.push(`<span style="color:var(--turf-bright);">All lines added cleanly.</span>`);
   }
-  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join(''); }
 
-  // Only clear the box if everything succeeded, so the admin can fix and retry rejected lines.
-  if (addedCount > 0 && denied.length === 0 && !writeError) textEl.value = '';
+  // Decide whether to keep the pasted text (so the admin can fix rejected lines and retry).
+  const keepText = !(addedCount > 0 && denied.length === 0 && !writeError);
+
+  // Re-render the whole app to reflect the newly added games.
+  renderAll();
+
+  // renderAll() rebuilt the Games tab from scratch, so re-fetch the live elements
+  // (the originals captured at the top of this function are now detached) and write to them.
+  const liveStatusEl = document.getElementById('bulkAddStatus');
+  if (liveStatusEl) { liveStatusEl.style.display='block'; liveStatusEl.innerHTML = log.join(''); }
+  const liveTextEl = document.getElementById('bulkGamesInput');
+  if (liveTextEl && keepText) liveTextEl.value = raw;
 }
 
 function toggleWipeConfirm(){
