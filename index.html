@@ -386,6 +386,31 @@ function sectionLabel(region, group){
   return region + ', Group ' + group;
 }
 
+// The full set of assignable sections (public North/South Groups 1-5, plus the two
+// Non-Publics). Out-of-state teams live in their own panel and aren't reassigned here.
+const ASSIGNABLE_SECTIONS = (() => {
+  const list = [];
+  ['North','South'].forEach(region => {
+    for (let g=1; g<=5; g++) list.push({ key: region+'|'+g, region, group: String(g), label: region+', Group '+g });
+  });
+  list.push({ key:'NPA', region:null, group:'NPA', label:'Non-Public A' });
+  list.push({ key:'NPB', region:null, group:'NPB', label:'Non-Public B' });
+  return list;
+})();
+
+function sectionSelectOptions(selectedKey){
+  return ASSIGNABLE_SECTIONS.map(s =>
+    `<option value="${s.key}" ${s.key===selectedKey?'selected':''}>${s.label}</option>`
+  ).join('');
+}
+
+// Parses a section key back into {region, group} for storage.
+function parseSectionKey(key){
+  if (key === 'NPA' || key === 'NPB') return { region: null, group: key };
+  const [region, group] = key.split('|');
+  return { region, group };
+}
+
 function seedStatewideData(){
   // Non-public multiplier categories (used for OSI bonus calc), independent of which
   // Non-Public group (A/B) a school plays in.
@@ -1242,7 +1267,10 @@ function renderTeamsTab(){
         ? `<input type="text" value="${t.name.replace(/"/g,'&quot;')}" style="width:170px" onchange="setTeamName('${t.id}', this.value)">`
         : t.name
       }</td>
-      <td>${sectionLabel(t.region, t.group)}</td>
+      <td>${isAdmin
+        ? `<select onchange="setTeamSection('${t.id}', this.value)" style="font-size:12px;">${sectionSelectOptions(sectionKey(t.region, t.group))}</select>`
+        : sectionLabel(t.region, t.group)
+      }</td>
       <td class="center">${catPill(t.category)}</td>
       <td class="num">${teamGames(t.id).length}</td>
       <td class="center">
@@ -1281,6 +1309,18 @@ function renderTeamsTab(){
         <button onclick="bulkSetNorthing()">Apply Northing</button>
       </div>
       <div id="bulkNorthingStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  ` : '';
+
+  const bulkSectionPanel = isAdmin ? `
+    <div class="panel">
+      <h2>Bulk Set Section <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">One team per line: <code>team name, section</code>. Section can be written as "North, Group 3", "South 5", "N3", "Non-Public A", etc. Moves each team into that supersection for UPR rankings, brackets, and every panel. Useful at season start when teams are re-classed. Out-of-state teams can't be assigned a section.</p>
+      <textarea id="bulkSectionInput" rows="6" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="Old Tappan, North Group 3&#10;Millville, South 5&#10;Bergen Catholic, Non-Public A"></textarea>
+      <div class="form-row" style="margin-top:10px;">
+        <button onclick="bulkSetSection()">Apply Sections</button>
+      </div>
+      <div id="bulkSectionStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
     </div>
   ` : '';
 
@@ -1394,6 +1434,7 @@ function renderTeamsTab(){
     </div>
     ${bulkSIPanel}
     ${bulkNorthingPanel}
+    ${bulkSectionPanel}
     ${oosPanel}
   `;
 }
@@ -2069,6 +2110,18 @@ async function setNorthing(teamId, value){
   const { error } = await sb.from('teams').update({ northing: v }).eq('id', teamId);
   if (error) { console.error('Failed to update northing', error); showToast('Could not save — try again.'); }
 }
+async function setTeamSection(teamId, sectionKeyValue){
+  if (!isAdmin) return;
+  const t = state.teams.find(t=>t.id===teamId);
+  if (!t) return;
+  const { region, group } = parseSectionKey(sectionKeyValue);
+  t.region = region;
+  t.group = group;
+  renderAll();
+  const { error } = await sb.from('teams').update({ region, team_group: group }).eq('id', teamId);
+  if (error) { console.error('Failed to update section', error); showToast('Could not save section — try again.'); }
+  else showToast(`Moved ${t.name} to ${sectionLabel(region, group)}.`, 'success');
+}
 function toggleRegionField(){
   const group = document.getElementById('newTeamGroup').value;
   const wrap = document.getElementById('regionFieldWrap');
@@ -2195,6 +2248,71 @@ async function removeGame(id){
   renderAll();
   const { error } = await sb.from('games').delete().eq('id', id);
   if (error) { console.error('Failed to delete game', error); showToast('Could not delete — try again.'); }
+}
+
+async function bulkSetSection(){
+  if (!isAdmin) return;
+  const textEl = document.getElementById('bulkSectionInput');
+  const lines = textEl.value.split('\n').map(l=>l.trim()).filter(l=>l.length);
+
+  const teamByName = {};
+  state.teams.forEach(t => { teamByName[t.name.toLowerCase()] = t; });
+
+  // Accept a range of section spellings and map them to a canonical {region, group}.
+  function parseSectionText(raw){
+    const s = raw.toLowerCase().replace(/[.\-_]/g,' ').replace(/\s+/g,' ').trim();
+    if (/non ?public a|np ?a|nonpublic a/.test(s)) return { region:null, group:'NPA' };
+    if (/non ?public b|np ?b|nonpublic b/.test(s)) return { region:null, group:'NPB' };
+    // Handle compact shorthand like "n3" / "s5" (no space between letter and digit).
+    const compact = s.match(/^([ns])\s*([1-5])$/);
+    if (compact){
+      return { region: compact[1]==='n' ? 'North' : 'South', group: compact[2] };
+    }
+    const north = /\bnorth\b/.test(s) || /^n\b/.test(s);
+    const south = /\bsouth\b/.test(s) || /^s\b/.test(s);
+    const gm = s.match(/(?:group\s*)?([1-5])\b/);
+    if ((north || south) && gm){
+      return { region: north ? 'North' : 'South', group: gm[1] };
+    }
+    return null;
+  }
+
+  let updates = [], errors = [];
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (/^team\b/i.test(line)) return;
+    const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
+    if (fields.length < 2) { errors.push(`Line ${lineNum}: needs "team name, section"`); return; }
+    const sectionText = fields[fields.length-1];
+    const name = fields.slice(0, -1).join(',').trim();
+    const team = teamByName[name.toLowerCase()];
+    if (!team) { errors.push(`Line ${lineNum}: team "${name}" not found`); return; }
+    if (team.isOutOfState) { errors.push(`Line ${lineNum}: "${name}" is out-of-state and has no section`); return; }
+    const parsed = parseSectionText(sectionText);
+    if (!parsed) { errors.push(`Line ${lineNum}: couldn't read section "${sectionText}" — use e.g. "North, Group 3", "South 5", "Non-Public A"`); return; }
+    team.region = parsed.region;
+    team.group = parsed.group;
+    updates.push({ id: team.id, region: parsed.region, team_group: parsed.group });
+  });
+
+  let dbError = null;
+  if (updates.length){
+    // Use per-row updates (not upsert) since we're only changing two columns and don't
+    // want to risk an upsert treating a partial row as an insert.
+    for (const u of updates){
+      const { error } = await sb.from('teams').update({ region: u.region, team_group: u.team_group }).eq('id', u.id);
+      if (error){ dbError = error; break; }
+    }
+    if (dbError) errors.push('⚠ Database write failed: ' + dbError.message);
+  }
+  const log = [`Updated section for ${updates.length} team(s).`];
+  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
+  const keepText = errors.length > 0;
+  renderAll();
+  const liveStatus = document.getElementById('bulkSectionStatus');
+  if (liveStatus) { liveStatus.style.display='block'; liveStatus.innerHTML = log.join('<br>'); }
+  const liveText = document.getElementById('bulkSectionInput');
+  if (liveText && !keepText) liveText.value = '';
 }
 
 async function bulkSetNorthing(){
