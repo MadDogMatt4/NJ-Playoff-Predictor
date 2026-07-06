@@ -1471,7 +1471,7 @@ function renderGamesTab(){
       <div id="addGameError" style="display:none; color:var(--red); font-size:12px; margin-top:6px;"></div>
     </div>
     <div class="panel">
-      <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span> <span style="color:var(--turf-bright); font-family:'IBM Plex Mono',monospace; font-size:10px;">v-DETAIL-REPORT</span></h2>
       <p class="hint">One game per line: <code>week, team A name, team B name</code> — or include scores: <code>week, team A, team B, score A, score B</code>. Leave scores off (or blank) for a TBD game. Works with comma- or tab-separated lines (so pasting straight from a spreadsheet works), and a header row starting with "Week" is ignored automatically. Team names must exactly match an existing team (case-insensitive) — add any missing teams or out-of-state opponents first. Duplicate week+matchup entries are skipped automatically.</p>
       <textarea id="bulkGamesInput" rows="8" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="0, Old Tappan, Cranford&#10;0, West Morris, Summit, 21, 14"></textarea>
       <div class="form-row" style="margin-top:10px;">
