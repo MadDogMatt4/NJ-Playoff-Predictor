@@ -257,6 +257,7 @@
 <body>
 <div class="wrap">
   <div id="toast" style="display:none; position:fixed; bottom:20px; right:20px; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); padding:10px 16px; border-radius:6px; font-size:13px; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
+  <div id="maintenanceOverlay" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:2000; align-items:center; justify-content:center; text-align:center; padding:24px;"></div>
 
   <div class="masthead">
     <div>
@@ -316,6 +317,8 @@ let predictions = {}; // personal, per-viewer: { [gameId]: winningTeamId } — b
 const PREDICTION_MARGIN = 21; // assumed margin for a predicted winner, per decision
 let coinFlipResolutions = {}; // shared/official: { [tieGroupKey]: winningTeamId } — backed by coin_flips table
 let siteMessage = ''; // admin-set public announcement, backed by site_message table
+let maintenanceOn = false; // when true, non-admin visitors see a lock screen
+let maintenanceMessage = ''; // custom text shown on the lock screen
 
 let dataLoaded = false;
 let nextTeamId = 1;
@@ -594,7 +597,7 @@ async function loadAllData(){
     fetchAllRows('teams', '*'),
     fetchAllRows('games', '*'),
     fetchAllRows('coin_flips', '*'),
-    sb.from('site_message').select('message').eq('id', 1).maybeSingle()
+    sb.from('site_message').select('message, maintenance_on, maintenance_message').eq('id', 1).maybeSingle()
   ]);
   if (msgRes && msgRes.error) console.error('Failed to load site message', msgRes.error);
 
@@ -603,6 +606,8 @@ async function loadAllData(){
   coinFlipResolutions = {};
   coinFlipsData.forEach(r => { coinFlipResolutions[r.key] = r.winning_team_id; });
   siteMessage = (msgRes && msgRes.data && msgRes.data.message) ? msgRes.data.message : '';
+  maintenanceOn = !!(msgRes && msgRes.data && msgRes.data.maintenance_on);
+  maintenanceMessage = (msgRes && msgRes.data && msgRes.data.maintenance_message) ? msgRes.data.maintenance_message : '';
 
   // Recompute id counters from loaded data so new additions don't collide.
   state.teams.forEach(t => { const n = parseInt(t.id.slice(1),10); if (n >= nextTeamId) nextTeamId = n+1; });
@@ -2009,6 +2014,7 @@ async function randomizeAllPredictions(){
 }
 
 function renderAll(){
+  renderMaintenance();
   renderSiteMessage();
   renderTeamsTab();
   renderGamesTab();
@@ -2016,6 +2022,27 @@ function renderAll(){
   renderResultsTab();
   renderBracketTab();
   renderDetailTab();
+}
+
+function renderMaintenance(){
+  const overlay = document.getElementById('maintenanceOverlay');
+  if (!overlay) return;
+  // Show the lock screen to NON-admin visitors while maintenance is on. Admins are never
+  // locked out — they see the site normally (plus the maintenance controls) so they can work.
+  if (maintenanceOn && !isAdmin){
+    const msg = (maintenanceMessage || '').trim() || 'The site is briefly down for updates. Please check back in a few minutes.';
+    overlay.style.display = 'flex';
+    overlay.innerHTML = `
+      <div style="max-width:460px;">
+        <div style="font-family:'Oswald',sans-serif; font-weight:700; text-transform:uppercase; font-size:28px; letter-spacing:0.5px; color:var(--chalk);">NJ Football <span style="color:var(--gold);">Playoff Predictor</span></div>
+        <div style="margin-top:20px; font-size:24px;">🔧</div>
+        <div style="margin-top:12px; font-size:16px; color:var(--chalk); line-height:1.6;">${escapeHtml(msg)}</div>
+        <div style="margin-top:20px; font-size:12px; color:var(--chalk-dim);">Updating rankings — back shortly.</div>
+      </div>`;
+  } else {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+  }
 }
 
 function renderSiteMessage(){
@@ -2049,6 +2076,18 @@ function renderSiteMessage(){
           <button onclick="saveSiteMessage()">Save announcement</button>
           <button class="ghost" onclick="clearSiteMessage()">Clear banner</button>
         </div>
+      </div>
+      <div class="panel" style="border-color:${maintenanceOn ? 'var(--gold)' : 'var(--line)'};">
+        <h2>Maintenance Mode <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span> ${maintenanceOn ? '<span class="jump-tag" style="color:var(--gold);">● CURRENTLY ON</span>' : ''}</h2>
+        <p class="hint">When ON, visitors see a "down for updates" lock screen instead of the site — useful while you enter results or reassign sections so nobody sees half-finished numbers. <strong>You (admin) are never locked out</strong> — you keep full access while it's on. Remember to turn it back OFF when you're done.</p>
+        <textarea id="maintenanceMsgInput" rows="2" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'Inter',sans-serif; font-size:13px;" placeholder="Optional custom message (defaults to a generic 'back soon' note).">${escapeHtml(maintenanceMessage || '')}</textarea>
+        <div class="form-row" style="margin-top:10px; align-items:center;">
+          ${maintenanceOn
+            ? `<button onclick="setMaintenance(false)">Turn OFF — reopen site to visitors</button>`
+            : `<button class="danger" onclick="setMaintenance(true)">Turn ON — lock site for visitors</button>`
+          }
+          <button class="ghost" onclick="saveMaintenanceMessage()">Save message only</button>
+        </div>
       </div>`;
   } else {
     editor.style.display = 'none';
@@ -2077,6 +2116,30 @@ async function clearSiteMessage(){
   const { error } = await sb.from('site_message').update({ message: '', updated_at: new Date().toISOString() }).eq('id', 1);
   if (error) { console.error('Failed to clear announcement', error); showToast('Could not clear — try again.'); }
   else showToast('Banner cleared.');
+}
+
+async function setMaintenance(on){
+  if (!isAdmin) return;
+  const input = document.getElementById('maintenanceMsgInput');
+  if (input) maintenanceMessage = input.value;
+  maintenanceOn = on;
+  renderAll();
+  const { error } = await sb.from('site_message')
+    .update({ maintenance_on: on, maintenance_message: maintenanceMessage, updated_at: new Date().toISOString() })
+    .eq('id', 1);
+  if (error) { console.error('Failed to set maintenance mode', error); showToast('Could not update maintenance mode — try again.'); }
+  else showToast(on ? 'Maintenance mode ON — visitors now see the lock screen.' : 'Maintenance mode OFF — site is live again.', 'success');
+}
+async function saveMaintenanceMessage(){
+  if (!isAdmin) return;
+  const input = document.getElementById('maintenanceMsgInput');
+  maintenanceMessage = input ? input.value : '';
+  renderSiteMessage();
+  const { error } = await sb.from('site_message')
+    .update({ maintenance_message: maintenanceMessage, updated_at: new Date().toISOString() })
+    .eq('id', 1);
+  if (error) { console.error('Failed to save maintenance message', error); showToast('Could not save — try again.'); }
+  else showToast('Maintenance message saved.', 'success');
 }
 
 /* ============================== ACTIONS ============================== */
