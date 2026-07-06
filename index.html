@@ -623,6 +623,11 @@ function effectiveGames(){
     if (g.scoreA !== null && g.scoreA !== undefined && g.scoreB !== null && g.scoreB !== undefined) return g;
     const pick = predictions[g.id];
     if (!pick) return null; // no official result and no prediction — doesn't count yet
+    if (pick === 'TIE'){
+      // Predicted tie — equal scores. The engine reads equal scores as a tie everywhere
+      // (Power Points 1.5 quality pts, OSI at 75%, residual tie rows), so this is all it needs.
+      return {...g, scoreA: PREDICTION_MARGIN, scoreB: PREDICTION_MARGIN, isProjected: true};
+    }
     const scoreA = pick === g.teamA ? PREDICTION_MARGIN : 0;
     const scoreB = pick === g.teamB ? PREDICTION_MARGIN : 0;
     return {...g, scoreA, scoreB, isProjected: true};
@@ -1234,6 +1239,11 @@ function teamName(id){
   const t = state.teams.find(t=>t.id===id);
   return t ? t.name : '—';
 }
+// Formats a prediction value for display — a team id becomes the team name, the special
+// 'TIE' sentinel becomes "Tie".
+function pickLabel(pick){
+  return pick === 'TIE' ? 'Tie' : teamName(pick);
+}
 
 function teamInfoBadge(id){
   const t = state.teams.find(t=>t.id===id);
@@ -1482,7 +1492,7 @@ function renderGamesTab(){
       </td>`;
     } else {
       scoreCell = `<td class="num" colspan="3" style="text-align:center; color:var(--chalk-dim);">
-        TBD ${myPick ? `<span class="jump-tag">your pick: ${teamName(myPick)}</span>` : ''}
+        TBD ${myPick ? `<span class="jump-tag">your pick: ${pickLabel(myPick)}</span>` : ''}
       </td>`;
     }
     return `
@@ -1857,6 +1867,7 @@ function renderPredictTab(){
   const rows = sorted.map(g => {
     const pick = predictions[g.id];
     const btnA = `<button class="${pick===g.teamA?'':'ghost'}" style="${pick===g.teamA?'':'background:transparent;'}" onclick="setPrediction('${g.id}','${g.teamA}')">${teamName(g.teamA)} wins</button>`;
+    const btnTie = `<button class="${pick==='TIE'?'':'ghost'}" style="${pick==='TIE'?'':'background:transparent;'}" onclick="setPrediction('${g.id}','TIE')">Tie</button>`;
     const btnB = `<button class="${pick===g.teamB?'':'ghost'}" style="${pick===g.teamB?'':'background:transparent;'}" onclick="setPrediction('${g.id}','${g.teamB}')">${teamName(g.teamB)} wins</button>`;
     return `
       <tr>
@@ -1866,7 +1877,7 @@ function renderPredictTab(){
           <div style="margin:4px 0; color:var(--chalk-dim); font-size:11px;">vs</div>
           ${teamName(g.teamB)}${teamInfoBadge(g.teamB)}
         </td>
-        <td class="center" style="display:flex; gap:6px; justify-content:center;">${btnA}${btnB}</td>
+        <td class="center" style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">${btnA}${btnTie}${btnB}</td>
         <td class="center">${pick ? `<button class="danger" onclick="clearPrediction('${g.id}')">Clear</button>` : ''}</td>
       </tr>
     `;
@@ -1876,7 +1887,7 @@ function renderPredictTab(){
   el.innerHTML = `
     <div class="panel">
       <h2>Make Your Predictions</h2>
-      <p class="hint">Pick a winner for any upcoming game — picks assume a flat ${PREDICTION_MARGIN}-point margin for ranking-math purposes. Your picks are private to you; they only change what <em>you</em> see on the Rankings tab, never the official schedule. Once the admin enters a real result, your pick for that game stops mattering automatically.</p>
+      <p class="hint">Pick a winner — or a tie — for any upcoming game. A predicted win assumes a flat ${PREDICTION_MARGIN}-point margin for ranking math; a predicted tie is modeled as equal scores, which flows correctly through Power Points (1.5 quality points) and OSI (75%). Your picks are private to you; they only change what <em>you</em> see on the Rankings tab, never the official schedule. Once the admin enters a real result, your pick for that game stops mattering automatically.</p>
       <div class="form-row" style="align-items:center;">
         <div class="field"><label>Week</label><select id="predictWeekFilter" onchange="predictFilterWeek=this.value; renderPredictTab();">${buildWeekFilterOptions(predictFilterWeek)}</select></div>
         <div class="field"><label>Section</label><select id="predictSectionFilter" onchange="predictFilterSection=this.value; renderPredictTab();">${buildSectionFilterOptions(predictFilterSection)}</select></div>
