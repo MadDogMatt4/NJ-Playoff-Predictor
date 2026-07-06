@@ -2278,42 +2278,62 @@ async function bulkAddGames(){
   const nameToId = {};
   state.teams.forEach(t => { nameToId[t.name.toLowerCase()] = t.id; });
 
-  let newGames = [], dupSkipped = 0, errors = [];
+  // denied entries collect { line, content, reason } so the admin sees exactly what/why.
+  let newGames = [], denied = [], addedCount = 0;
   lines.forEach((line, idx) => {
     const lineNum = idx + 1;
     if (/^week\b/i.test(line)) return; // skip an optional header row
     const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
-    if (fields.length < 3) { errors.push(`Line ${lineNum}: needs at least week, team A, team B`); return; }
+    if (fields.length < 3) { denied.push({line:lineNum, content:line, reason:'needs at least: week, team A, team B'}); return; }
     const week = parseInt(fields[0], 10);
-    if (isNaN(week)) { errors.push(`Line ${lineNum}: "${fields[0]}" isn't a valid week number`); return; }
+    if (isNaN(week)) { denied.push({line:lineNum, content:line, reason:`"${fields[0]}" isn't a valid week number`}); return; }
     const teamAId = nameToId[fields[1].toLowerCase()];
     const teamBId = nameToId[fields[2].toLowerCase()];
-    if (!teamAId) { errors.push(`Line ${lineNum}: team "${fields[1]}" not found`); return; }
-    if (!teamBId) { errors.push(`Line ${lineNum}: team "${fields[2]}" not found`); return; }
+    if (!teamAId && !teamBId) { denied.push({line:lineNum, content:line, reason:`neither team found: "${fields[1]}" and "${fields[2]}"`}); return; }
+    if (!teamAId) { denied.push({line:lineNum, content:line, reason:`team not found: "${fields[1]}"`}); return; }
+    if (!teamBId) { denied.push({line:lineNum, content:line, reason:`team not found: "${fields[2]}"`}); return; }
+    if (teamAId === teamBId) { denied.push({line:lineNum, content:line, reason:`a team can't play itself ("${fields[1]}")`}); return; }
     let scoreA = null, scoreB = null;
     if (fields.length >= 5 && fields[3] !== '' && fields[4] !== '') {
       const a = parseInt(fields[3],10), b = parseInt(fields[4],10);
       if (!isNaN(a) && !isNaN(b)) { scoreA = a; scoreB = b; }
+      else { denied.push({line:lineNum, content:line, reason:`scores "${fields[3]}" / "${fields[4]}" aren't both valid numbers`}); return; }
     }
-    const dup = state.games.some(g => g.week===week &&
+    const nameA = state.teams.find(t=>t.id===teamAId).name;
+    const nameB = state.teams.find(t=>t.id===teamBId).name;
+    const dupExisting = state.games.some(g => g.week===week &&
       ((g.teamA===teamAId && g.teamB===teamBId) || (g.teamA===teamBId && g.teamB===teamAId)));
-    if (dup || newGames.some(g => g.week===week && ((g.teamA===teamAId&&g.teamB===teamBId)||(g.teamA===teamBId&&g.teamB===teamAId)))) {
-      dupSkipped++; return;
-    }
+    if (dupExisting) { denied.push({line:lineNum, content:line, reason:`already in the schedule: ${nameA} vs ${nameB}, Week ${week}`}); return; }
+    const dupInBatch = newGames.some(g => g.week===week && ((g.teamA===teamAId&&g.teamB===teamBId)||(g.teamA===teamBId&&g.teamB===teamAId)));
+    if (dupInBatch) { denied.push({line:lineNum, content:line, reason:`duplicated earlier in this same paste: ${nameA} vs ${nameB}, Week ${week}`}); return; }
     newGames.push({id: uid('g'), week, teamA: teamAId, teamB: teamBId, scoreA, scoreB});
   });
 
   newGames.forEach(g => state.games.push(g));
   renderAll();
+  let writeError = null;
   if (newGames.length){
-    const err = await writeInChunks('games', newGames.map(localGameToDb));
-    if (err) errors.push('⚠ Database write failed: ' + err.message);
+    writeError = await writeInChunks('games', newGames.map(localGameToDb));
   }
-  const log = [`Added ${newGames.length} game(s).`];
-  if (dupSkipped) log.push(`Skipped ${dupSkipped} duplicate(s) already in the schedule.`);
-  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
-  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join('<br>'); }
-  if (newGames.length && !errors.length) textEl.value = '';
+  addedCount = newGames.length;
+
+  // Build the results report.
+  const log = [`<strong>Added ${addedCount} game(s).</strong>`];
+  if (writeError){
+    log.push(`<span style="color:var(--red);">⚠ Database write failed — these may not have saved: ${writeError.message}</span>`);
+  }
+  if (denied.length){
+    log.push(`<br><strong style="color:var(--gold);">${denied.length} line(s) were not added:</strong>`);
+    denied.forEach(d => {
+      log.push(`<div style="margin:4px 0; padding-left:8px; border-left:2px solid var(--line);"><span style="color:var(--chalk-dim);">Line ${d.line}:</span> <code>${escapeHtml(d.content)}</code><br><span style="color:var(--red); font-size:11.5px;">↳ ${escapeHtml(d.reason)}</span></div>`);
+    });
+  } else if (addedCount > 0) {
+    log.push(`<span style="color:var(--turf-bright);">All lines added cleanly.</span>`);
+  }
+  if (statusEl) { statusEl.style.display='block'; statusEl.innerHTML = log.join(''); }
+
+  // Only clear the box if everything succeeded, so the admin can fix and retry rejected lines.
+  if (addedCount > 0 && denied.length === 0 && !writeError) textEl.value = '';
 }
 
 function toggleWipeConfirm(){
