@@ -286,6 +286,7 @@
     <button class="tab" data-tab="predict">Predict</button>
     <button class="tab" data-tab="results">Rankings</button>
     <button class="tab" data-tab="bracket">Bracket</button>
+    <button class="tab" data-tab="standings">Divisions</button>
     <button class="tab" data-tab="detail">Team Detail</button>
   </div>
 
@@ -294,6 +295,7 @@
   <div id="tab-predict" class="tabview" style="display:none;"></div>
   <div id="tab-results" class="tabview" style="display:none;"></div>
   <div id="tab-bracket" class="tabview" style="display:none;"></div>
+  <div id="tab-standings" class="tabview" style="display:none;"></div>
   <div id="tab-detail" class="tabview" style="display:none;"></div>
 
 </div>
@@ -326,14 +328,17 @@ let nextGameId = 1;
 let selectedDetailTeam = null;
 let selectedSection = null; // {region, group} string key, set on first render
 let selectedBracketSection = null; // separate selector for the Bracket tab
+let selectedStandingsConf = 'all'; // Divisions tab: conference filter
 let isAdmin = false;
 let currentSession = null; // Supabase auth session (anonymous visitor or logged-in admin)
 let gamesFilterWeek = 'all';
 let gamesFilterSection = 'all';
 let gamesFilterEligibility = 'all';
+let gamesFilterDivision = 'all';
 let predictFilterWeek = 'all';
 let predictFilterSection = 'all';
 let predictFilterEligibility = 'all';
+let predictFilterDivision = 'all';
 let teamsSortMode = 'section'; // 'section' or 'name'
 let editingGames = {}; // {gameId: true} — which completed games admin is currently editing
 
@@ -537,7 +542,9 @@ function dbTeamToLocal(row){
     startSI: row.start_si, ineligible: row.ineligible,
     isOutOfState: row.is_out_of_state,
     manualRecord: row.manual_record || { w:0, t:0, l:0 },
-    northing: (row.northing === null || row.northing === undefined) ? null : row.northing
+    northing: (row.northing === null || row.northing === undefined) ? null : row.northing,
+    conference: row.conference || null,
+    division: row.division || null
   };
 }
 function localTeamToDb(t){
@@ -546,7 +553,9 @@ function localTeamToDb(t){
     region: t.region, team_group: t.group,
     start_si: t.startSI, ineligible: t.ineligible,
     is_out_of_state: t.isOutOfState, manual_record: t.manualRecord,
-    northing: (t.northing === null || t.northing === undefined) ? null : t.northing
+    northing: (t.northing === null || t.northing === undefined) ? null : t.northing,
+    conference: t.conference || null,
+    division: t.division || null
   };
 }
 function dbGameToLocal(row){
@@ -924,6 +933,30 @@ function buildSectionFilterOptions(selected){
   });
   return opts.join('');
 }
+function gameMatchesDivision(g, divFilterKey){
+  if (!divFilterKey || divFilterKey === 'all') return true;
+  const tA = state.teams.find(t=>t.id===g.teamA);
+  const tB = state.teams.find(t=>t.id===g.teamB);
+  const aKey = tA ? divisionKey(tA.conference, tA.division) : null;
+  const bKey = tB ? divisionKey(tB.conference, tB.division) : null;
+  return aKey === divFilterKey || bKey === divFilterKey;
+}
+function buildDivisionFilterOptions(selected){
+  const divisions = getAllDivisions();
+  const opts = [`<option value="all" ${selected==='all'?'selected':''}>All divisions</option>`];
+  // Group options visually by conference for readability.
+  let lastConf = null;
+  divisions.forEach(d => {
+    if (d.conference !== lastConf){
+      if (lastConf !== null) opts.push('</optgroup>');
+      opts.push(`<optgroup label="${escapeHtml(d.conference)}">`);
+      lastConf = d.conference;
+    }
+    opts.push(`<option value="${escapeHtml(d.key)}" ${selected===d.key?'selected':''}>${escapeHtml(d.division)}</option>`);
+  });
+  if (lastConf !== null) opts.push('</optgroup>');
+  return opts.join('');
+}
 
 /* ============================== TIEBREAKER ENGINE ============================== */
 // Implements the official 5-step order: Head-to-Head, Common Opponents, OSI, Power
@@ -1050,6 +1083,102 @@ function resolveTieGroup(group, osiTotal, ppTotal){
   });
 
   return { order, coinFlipsNeeded, tiebreakerLog };
+}
+
+/* ============================== DIVISION STANDINGS ============================== */
+// Conference/division titles are entirely separate from the UPR/supersection system.
+// Only games between two teams in the SAME division count. Standings rank by divisional
+// win%, ties broken by a recursive mini round-robin (record vs only the still-tied teams);
+// a genuinely circular tie that can't be separated is shown as co-champions.
+
+function divisionKey(conference, division){
+  if (!conference || !division) return null;
+  return conference + ' || ' + division;
+}
+
+function getAllDivisions(){
+  const seen = new Map();
+  state.teams.forEach(t => {
+    if (t.isOutOfState) return;
+    const key = divisionKey(t.conference, t.division);
+    if (key && !seen.has(key)) seen.set(key, { conference: t.conference, division: t.division, key });
+  });
+  return [...seen.values()].sort((a,b) =>
+    a.conference.localeCompare(b.conference) || a.division.localeCompare(b.division));
+}
+
+// Win/loss record for teamId against a specific set of opponent ids (uses effectiveGames
+// via teamGames, so predictions are included). Only completed/predicted games count.
+function divRecordVs(teamId, oppIdSet){
+  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId));
+  let w=0,l=0,t=0;
+  games.forEach(g => { if (g.result==='W') w++; else if (g.result==='T') t++; else l++; });
+  const n = w+l+t;
+  return { w, l, t, games:n, pct: n>0 ? (w + 0.5*t)/n : 0 };
+}
+
+// Orders a set of teams by head-to-head record among ONLY themselves. Returns an array of
+// "tiers" (each tier = team ids that couldn't be separated). Recurses on partial separation.
+function orderByMiniRoundRobin(teamIds){
+  if (teamIds.length <= 1) return [teamIds];
+  const idSet = new Set(teamIds);
+  const recs = teamIds.map(id => {
+    const others = new Set([...idSet].filter(x => x!==id));
+    return { id, pct: divRecordVs(id, others).pct };
+  });
+  const byPct = {};
+  recs.forEach(r => { const k = r.pct.toFixed(6); (byPct[k] = byPct[k] || []).push(r.id); });
+  const sortedPcts = Object.keys(byPct).sort((a,b) => Number(b) - Number(a));
+
+  const tiers = [];
+  sortedPcts.forEach(pk => {
+    const group = byPct[pk];
+    if (group.length === 1){ tiers.push(group); return; }
+    if (group.length === teamIds.length){
+      // No separation at all → genuinely circular; co-champions for this tier.
+      tiers.push(group);
+      return;
+    }
+    // Partial separation → recurse on the still-tied subset.
+    orderByMiniRoundRobin(group).forEach(sub => tiers.push(sub));
+  });
+  return tiers;
+}
+
+// Full standings for one division: ordered rows with divisional records and co-placement flags.
+function computeDivisionStandings(divKey){
+  const teams = state.teams.filter(t => divisionKey(t.conference, t.division) === divKey && !t.isOutOfState);
+  const idSet = new Set(teams.map(t=>t.id));
+
+  const records = {};
+  teams.forEach(t => {
+    const others = new Set([...idSet].filter(x => x!==t.id));
+    records[t.id] = divRecordVs(t.id, others);
+  });
+
+  // Group by overall divisional win%, then break ties within each group via mini round-robin.
+  const byPct = {};
+  teams.forEach(t => { const k = records[t.id].pct.toFixed(6); (byPct[k] = byPct[k] || []).push(t.id); });
+  const sortedPcts = Object.keys(byPct).sort((a,b) => Number(b) - Number(a));
+
+  const orderedTiers = [];
+  sortedPcts.forEach(pk => {
+    const group = byPct[pk];
+    if (group.length === 1){ orderedTiers.push(group); return; }
+    orderByMiniRoundRobin(group).forEach(sub => orderedTiers.push(sub));
+  });
+
+  const rows = [];
+  let place = 1;
+  orderedTiers.forEach(tier => {
+    const coPlaced = tier.length > 1;
+    tier.forEach(id => {
+      const t = teams.find(x=>x.id===id);
+      rows.push({ team: t, record: records[id], place, coPlaced });
+    });
+    place += tier.length;
+  });
+  return rows;
 }
 
 function computeUPR(sectionFilterKey){
@@ -1272,7 +1401,41 @@ function teamInfoBadge(id){
   const sectionText = t.isOutOfState ? 'Out-of-State / Non-Member' : sectionLabel(t.region, t.group);
   const sectionPill = `<span style="display:inline-block; font-size:10px; padding:1px 6px; border-radius:8px; background:#232830; color:var(--chalk-dim); font-family:'IBM Plex Mono',monospace;">${sectionText}</span>`;
   const eligPill = t.ineligible ? `<span class="tie-flag" style="margin-left:4px;">Not eligible</span>` : '';
-  return `<div style="margin-top:3px;">${sectionPill}${eligPill}</div>`;
+  let confDivPill = '';
+  if (!t.isOutOfState && t.conference && t.division){
+    confDivPill = `<span style="display:inline-block; font-size:10px; padding:1px 6px; border-radius:8px; background:#232830; color:var(--turf-bright); font-family:'IBM Plex Mono',monospace; margin-left:4px;">${escapeHtml(t.conference + ' - ' + t.division)}</span>`;
+  }
+  return `<div style="margin-top:3px;">${sectionPill}${confDivPill}${eligPill}</div>`;
+}
+
+// Overall record across ALL games (every game the team has played/predicted).
+function overallRecord(teamId){
+  const gl = teamGames(teamId);
+  let w=0,l=0,t=0;
+  gl.forEach(g => { if (g.result==='W') w++; else if (g.result==='T') t++; else l++; });
+  return { w, l, t };
+}
+// Divisional record (games vs same-division opponents only).
+function divisionalRecord(teamId){
+  const team = state.teams.find(t=>t.id===teamId);
+  if (!team || !team.conference || !team.division) return null;
+  const divTeamIds = new Set(state.teams
+    .filter(o => o.conference===team.conference && o.division===team.division && o.id!==teamId && !o.isOutOfState)
+    .map(o=>o.id));
+  return divRecordVs(teamId, divTeamIds);
+}
+// Builds "(2-6, 1-4 SFC - American Red)" — division part omitted if team has no division.
+function recordLine(teamId){
+  const t = state.teams.find(x=>x.id===teamId);
+  if (!t) return '';
+  const ov = overallRecord(teamId);
+  const ovStr = `${ov.w}-${ov.l}${ov.t?('-'+ov.t):''}`;
+  const dr = divisionalRecord(teamId);
+  if (dr && t.conference && t.division){
+    const drStr = `${dr.w}-${dr.l}${dr.t?('-'+dr.t):''}`;
+    return `(${ovStr}, ${drStr} ${escapeHtml(t.conference + ' - ' + t.division)})`;
+  }
+  return `(${ovStr})`;
 }
 
 function renderTeamsTab(){
@@ -1352,6 +1515,18 @@ function renderTeamsTab(){
         <button onclick="bulkSetSection()">Apply Sections</button>
       </div>
       <div id="bulkSectionStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
+    </div>
+  ` : '';
+
+  const bulkConfDivPanel = isAdmin ? `
+    <div class="panel">
+      <h2>Bulk Set Conference / Division <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
+      <p class="hint">One team per line: <code>team name, conference, division</code>. This is completely separate from the UPR section — it drives the Divisions tab standings only. Conference and division are free text, so spell them exactly how you want them displayed (they're grouped by exact match). Example: <code>Old Tappan, Big North, Freedom Red</code>.</p>
+      <textarea id="bulkConfDivInput" rows="7" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="Old Tappan, Big North, Freedom Red&#10;Ramapo, Big North, Freedom Red&#10;Millville, West Jersey, Royal"></textarea>
+      <div class="form-row" style="margin-top:10px;">
+        <button onclick="bulkSetConferenceDivision()">Apply Conference / Division</button>
+      </div>
+      <div id="bulkConfDivStatus" style="display:none; margin-top:10px; font-size:12.5px; color:var(--chalk-dim); background:var(--panel-raised); border:1px solid var(--line); border-radius:4px; padding:10px; max-height:200px; overflow-y:auto;"></div>
     </div>
   ` : '';
 
@@ -1466,6 +1641,7 @@ function renderTeamsTab(){
     ${bulkSIPanel}
     ${bulkNorthingPanel}
     ${bulkSectionPanel}
+    ${bulkConfDivPanel}
     ${oosPanel}
   `;
 }
@@ -1485,6 +1661,7 @@ function renderGamesTab(){
     .filter(g => gameMatchesSection(g, gamesFilterSection))
     .filter(g => gamesFilterSection==='all' || !gameBothIneligible(g)) // hide both-ineligible matchups when viewing a specific section
     .filter(g => gameMatchesEligibilityFilter(g, gamesFilterEligibility))
+    .filter(g => gameMatchesDivision(g, gamesFilterDivision))
     .sort((a,b)=> a.week-b.week);
 
   let rows = sorted.map(g => {
@@ -1572,6 +1749,7 @@ function renderGamesTab(){
       <div class="form-row">
         <div class="field"><label>Week</label><select id="gamesWeekFilter" onchange="gamesFilterWeek=this.value; renderGamesTab();">${buildWeekFilterOptions(gamesFilterWeek)}</select></div>
         <div class="field"><label>Section</label><select id="gamesSectionFilter" onchange="gamesFilterSection=this.value; renderGamesTab();">${buildSectionFilterOptions(gamesFilterSection)}</select></div>
+        <div class="field"><label>Division</label><select id="gamesDivFilter" onchange="gamesFilterDivision=this.value; renderGamesTab();">${buildDivisionFilterOptions(gamesFilterDivision)}</select></div>
         <div class="field"><label>Eligibility</label><select id="gamesEligFilter" onchange="gamesFilterEligibility=this.value; renderGamesTab();">${buildEligibilityFilterOptions(gamesFilterEligibility)}</select></div>
       </div>
       <p class="hint">Section filter shows a game if <em>either</em> team belongs to that supersection — cross-section games will appear under both. When a specific section is selected, games where <em>both</em> teams are non-eligible are hidden automatically (out-of-state opponents are never counted toward this).</p>
@@ -1636,7 +1814,7 @@ function renderResultsTab(){
     return `
       <tr class="${isQualify?'qualify':''} ${cutline}">
         <td class="rank-num">${seed}</td>
-        <td class="team-name" style="cursor:pointer" onclick="openDetail('${t.id}')">${t.name}${jumpTag}${aqTag}${elimTag}${tieTag}${tbTag}</td>
+        <td class="team-name" style="cursor:pointer" onclick="openDetail('${t.id}')">${t.name}${jumpTag}${aqTag}${elimTag}${tieTag}${tbTag}<div style="font-size:10.5px; color:var(--chalk-dim); font-weight:normal; margin-top:2px;">${recordLine(t.id)}</div></td>
         <td class="num">${r.osiTotal[t.id].toFixed(2)}</td>
         <td class="num">${r.osiRank[t.id]}</td>
         <td class="num">${r.ppTotal[t.id].toFixed(2)}</td>
@@ -1766,7 +1944,7 @@ function renderBracketTab(){
       const seedNum = useLocalSlot ? entry.localSlot : entry.overallSeed;
       return `<div class="bk-team">
         <span class="bk-seed">${seedNum}</span>
-        <span class="bk-name">${entry.team.name}</span>
+        <span class="bk-name">${entry.team.name}<div style="font-size:9.5px; color:var(--chalk-dim); margin-top:1px;">${recordLine(entry.team.id)}</div></span>
       </div>`;
     };
     return `<div class="bk-matchup">${teamLine(m.high)}${teamLine(m.low)}</div>`;
@@ -1799,6 +1977,67 @@ function renderBracketTab(){
       </div>
       <p class="hint" style="margin-top:16px; margin-bottom:0;">Each bracket is seeded 1–8, pairing 1v8, 4v5, 3v6, 2v7. Once a supersection splits into these two brackets, no further head-to-head movement occurs.</p>
     </div>`;
+}
+
+function renderStandingsTab(){
+  const el = document.getElementById('tab-standings');
+  const divisions = getAllDivisions();
+  if (!divisions.length){
+    el.innerHTML = `<div class="panel"><p class="empty">No conference/division assignments yet.${isAdmin ? ' Add them on the Teams tab using the Bulk Set Conference/Division tool (after running the migration).' : ''}</p></div>`;
+    return;
+  }
+
+  const confs = [...new Set(divisions.map(d=>d.conference))].sort((a,b)=>a.localeCompare(b));
+  if (selectedStandingsConf !== 'all' && !confs.includes(selectedStandingsConf)) selectedStandingsConf = 'all';
+  const confOptions = [`<option value="all" ${selectedStandingsConf==='all'?'selected':''}>All conferences</option>`]
+    .concat(confs.map(c => `<option value="${escapeHtml(c)}" ${selectedStandingsConf===c?'selected':''}>${escapeHtml(c)}</option>`))
+    .join('');
+
+  const shownDivisions = divisions.filter(d => selectedStandingsConf==='all' || d.conference===selectedStandingsConf);
+
+  const projNote = hasAnyProjectedGames() ? `<p style="background:rgba(201,162,39,0.12); border:1px solid var(--gold-dim); border-radius:4px; padding:8px 12px; font-size:12.5px; color:var(--gold); margin:0 0 4px;">⚡ These standings reflect your own predictions for not-yet-played games.</p>` : '';
+
+  const divisionBlock = (d) => {
+    const rows = computeDivisionStandings(d.key);
+    if (!rows.length) return '';
+    const bodyRows = rows.map(r => {
+      const rec = r.record;
+      const isLeader = r.place === 1;
+      const champTag = isLeader
+        ? (r.coPlaced ? '<span class="tie-flag" style="border-color:var(--gold); color:var(--gold);">Co-Champion</span>' : '<span class="jump-tag" style="color:var(--gold);">★ Division Leader</span>')
+        : (r.coPlaced ? '<span class="tie-flag" style="font-size:9px;">tied</span>' : '');
+      return `
+        <tr class="${isLeader?'qualify':''}">
+          <td class="rank-num">${r.place}</td>
+          <td class="team-name" style="cursor:pointer" onclick="openDetail('${r.team.id}')">${r.team.name} ${champTag}</td>
+          <td class="num">${rec.w}–${rec.l}${rec.t?('–'+rec.t):''}</td>
+          <td class="num">${(rec.pct*100).toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+    return `
+      <div class="panel">
+        <h2 style="margin-bottom:2px;">${escapeHtml(d.division)}</h2>
+        <div style="font-size:11.5px; color:var(--chalk-dim); font-family:'IBM Plex Mono',monospace; margin-bottom:12px;">${escapeHtml(d.conference)}</div>
+        <div class="table-scroll">
+          <table class="results-table">
+            <thead><tr><th>Pos</th><th>Team</th><th class="num">Div. Record</th><th class="num">Win %</th></tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="panel">
+      <h2>Conference & Division Standings</h2>
+      <div class="form-row">
+        <div class="field"><label>Conference</label><select id="standingsConfSelect" onchange="selectedStandingsConf=this.value; renderStandingsTab();">${confOptions}</select></div>
+      </div>
+      ${projNote}
+      <p class="hint">Standings count only games between teams in the same division. Ties are broken by head-to-head record among the tied teams; a genuinely circular tie that can't be separated is shown as co-champions. This is fully separate from the UPR / state-playoff system.</p>
+    </div>
+    ${shownDivisions.map(divisionBlock).join('')}
+  `;
 }
 
 function renderDetailTab(){
@@ -1882,7 +2121,8 @@ function renderPredictTab(){
     .filter(g => (predictFilterWeek==='all' || String(g.week)===String(predictFilterWeek)))
     .filter(g => gameMatchesSection(g, predictFilterSection))
     .filter(g => predictFilterSection==='all' || !gameBothIneligible(g)) // hide both-ineligible matchups when viewing a specific section
-    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility));
+    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility))
+    .filter(g => gameMatchesDivision(g, predictFilterDivision));
 
   const sorted = [...tbdGames].sort((a,b)=> a.week-b.week);
   const rows = sorted.map(g => {
@@ -1912,6 +2152,7 @@ function renderPredictTab(){
       <div class="form-row" style="align-items:center;">
         <div class="field"><label>Week</label><select id="predictWeekFilter" onchange="predictFilterWeek=this.value; renderPredictTab();">${buildWeekFilterOptions(predictFilterWeek)}</select></div>
         <div class="field"><label>Section</label><select id="predictSectionFilter" onchange="predictFilterSection=this.value; renderPredictTab();">${buildSectionFilterOptions(predictFilterSection)}</select></div>
+        <div class="field"><label>Division</label><select id="predictDivFilter" onchange="predictFilterDivision=this.value; renderPredictTab();">${buildDivisionFilterOptions(predictFilterDivision)}</select></div>
         <div class="field"><label>Eligibility</label><select id="predictEligFilter" onchange="predictFilterEligibility=this.value; renderPredictTab();">${buildEligibilityFilterOptions(predictFilterEligibility)}</select></div>
       </div>
       <div class="form-row" style="align-items:center;">
@@ -1979,7 +2220,8 @@ function tbdGamesMatchingPredictFilters(includeWeekFilter){
     .filter(g => !includeWeekFilter || predictFilterWeek==='all' || String(g.week)===String(predictFilterWeek))
     .filter(g => gameMatchesSection(g, predictFilterSection))
     .filter(g => predictFilterSection==='all' || !gameBothIneligible(g))
-    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility));
+    .filter(g => gameMatchesEligibilityFilter(g, predictFilterEligibility))
+    .filter(g => gameMatchesDivision(g, predictFilterDivision));
 }
 async function randomizeWeek(){
   if (predictFilterWeek === 'all') return; // requires a specific week to be selected
@@ -2021,6 +2263,7 @@ function renderAll(){
   renderPredictTab();
   renderResultsTab();
   renderBracketTab();
+  renderStandingsTab();
   renderDetailTab();
 }
 
@@ -2338,6 +2581,51 @@ async function removeGame(id){
   renderAll();
   const { error } = await sb.from('games').delete().eq('id', id);
   if (error) { console.error('Failed to delete game', error); showToast('Could not delete — try again.'); }
+}
+
+async function bulkSetConferenceDivision(){
+  if (!isAdmin) return;
+  const textEl = document.getElementById('bulkConfDivInput');
+  const lines = textEl.value.split('\n').map(l=>l.trim()).filter(l=>l.length);
+
+  const teamByName = {};
+  state.teams.forEach(t => { teamByName[t.name.toLowerCase()] = t; });
+
+  let updates = [], errors = [];
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    if (/^team\b/i.test(line)) return; // skip an optional header row
+    // Format: team name, conference, division
+    const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
+    if (fields.length < 3) { errors.push(`Line ${lineNum}: needs "team name, conference, division"`); return; }
+    // Team name may itself contain commas (co-ops); conference+division are the LAST two fields.
+    const division = fields[fields.length-1];
+    const conference = fields[fields.length-2];
+    const name = fields.slice(0, fields.length-2).join(',').trim();
+    if (!conference || !division) { errors.push(`Line ${lineNum}: conference and division can't be blank`); return; }
+    const team = teamByName[name.toLowerCase()];
+    if (!team) { errors.push(`Line ${lineNum}: team "${name}" not found`); return; }
+    if (team.isOutOfState) { errors.push(`Line ${lineNum}: "${name}" is out-of-state and has no division`); return; }
+    team.conference = conference;
+    team.division = division;
+    updates.push({ id: team.id, conference, division });
+  });
+
+  let dbError = null;
+  for (const u of updates){
+    const { error } = await sb.from('teams').update({ conference: u.conference, division: u.division }).eq('id', u.id);
+    if (error){ dbError = error; break; }
+  }
+  if (dbError) errors.push('⚠ Database write failed: ' + dbError.message);
+
+  const log = [`Updated conference/division for ${updates.length} team(s).`];
+  if (errors.length) log.push(`⚠ ${errors.length} line(s) had issues:`, ...errors.map(e=>'&nbsp;&nbsp;'+e));
+  const keepText = errors.length > 0;
+  renderAll();
+  const liveStatus = document.getElementById('bulkConfDivStatus');
+  if (liveStatus) { liveStatus.style.display='block'; liveStatus.innerHTML = log.join('<br>'); }
+  const liveText = document.getElementById('bulkConfDivInput');
+  if (liveText && !keepText) liveText.value = '';
 }
 
 async function bulkSetSection(){
