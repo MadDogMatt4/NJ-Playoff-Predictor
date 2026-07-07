@@ -398,6 +398,20 @@ async function checkIsAdmin(){
 
 function uid(prefix){ return prefix + (prefix==='t'? nextTeamId++ : nextGameId++); }
 
+// Thanksgiving games are stored with week === 'Thanksgiving' (a string). They count toward
+// overall and divisional records, but are EXCLUDED from all UPR math (SI, OSI, Power Points).
+const THANKSGIVING = 'Thanksgiving';
+function isThanksgiving(week){
+  return String(week) === THANKSGIVING;
+}
+function isNumericWeek(week){
+  return !isThanksgiving(week) && week !== null && week !== undefined && !isNaN(Number(week));
+}
+// Sort helper: numeric weeks in order, Thanksgiving always last.
+function weekSortValue(week){
+  return isThanksgiving(week) ? Number.POSITIVE_INFINITY : Number(week);
+}
+
 function sectionKey(region, group){
   if (group === 'NPA' || group === 'NPB') return group;
   if (group === 'OOS') return 'OOS';
@@ -559,10 +573,15 @@ function localTeamToDb(t){
   };
 }
 function dbGameToLocal(row){
-  return { id: row.id, week: row.week, teamA: row.team_a, teamB: row.team_b, scoreA: row.score_a, scoreB: row.score_b };
+  // After the week column became text, numeric weeks come back as strings ("3"). Normalize
+  // those to numbers so week math works; keep 'Thanksgiving' as its string.
+  let week = row.week;
+  if (week !== null && week !== undefined && !isThanksgiving(week) && !isNaN(Number(week))) week = Number(week);
+  return { id: row.id, week, teamA: row.team_a, teamB: row.team_b, scoreA: row.score_a, scoreB: row.score_b };
 }
 function localGameToDb(g){
-  return { id: g.id, week: g.week, team_a: g.teamA, team_b: g.teamB, score_a: g.scoreA, score_b: g.scoreB };
+  // Store week as text (column is text). Numbers serialize fine; 'Thanksgiving' passes through.
+  return { id: g.id, week: String(g.week), team_a: g.teamA, team_b: g.teamB, score_a: g.scoreA, score_b: g.scoreB };
 }
 
 /* ============================== PERSISTENCE (Supabase) ============================== */
@@ -681,6 +700,7 @@ function computeStrengthIndex(){
 
   const gamesByWeek = {};
   effectiveGames().forEach(g => {
+    if (!isNumericWeek(g.week)) return; // Thanksgiving/non-numeric weeks never move SI
     gamesByWeek[g.week] = gamesByWeek[g.week] || [];
     gamesByWeek[g.week].push(g);
   });
@@ -725,9 +745,9 @@ function computeFinalCategories(){
   const finalCat = {};
   teams.forEach(t => finalCat[t.id] = t.category);
 
-  const sorted = [...effectiveGames()].sort((a,b)=>a.week-b.week);
+  const sorted = [...effectiveGames()].sort((a,b)=>weekSortValue(a.week)-weekSortValue(b.week));
   sorted.forEach(g => {
-    if (g.week > 8) return; // rule window is Weeks 0-8
+    if (!isNumericWeek(g.week) || g.week > 8) return; // rule window is Weeks 0-8; Thanksgiving excluded
     [[g.teamA,g.teamB,g.scoreA,g.scoreB],[g.teamB,g.teamA,g.scoreB,g.scoreA]].forEach(([selfId,oppId,selfScore,oppScore]) => {
       const oppCatAtStart = state.teams.find(t=>t.id===oppId).category; // base category for "non-multiplier" check
       const lost = selfScore < oppScore;
@@ -748,7 +768,7 @@ function computeFinalCategories(){
 
 function teamGames(teamId){
   return effectiveGames().filter(g => g.teamA===teamId || g.teamB===teamId)
-    .sort((a,b)=>a.week-b.week)
+    .sort((a,b)=>weekSortValue(a.week)-weekSortValue(b.week))
     .map(g => {
       const isA = g.teamA===teamId;
       const oppId = isA? g.teamB : g.teamA;
@@ -769,7 +789,8 @@ function recordThruFirstN(teamId, n){
     const mr = team.manualRecord || {w:0,t:0,l:0};
     return {w:mr.w, t:mr.t, l:mr.l, played: mr.w+mr.t+mr.l};
   }
-  const gl = teamGames(teamId).slice(0, n);
+  // First N games by week order, excluding Thanksgiving (not part of the numbered-week window).
+  const gl = teamGames(teamId).filter(g => isNumericWeek(g.week)).slice(0, n);
   let w=0,t=0,l=0;
   gl.forEach(g => { if(g.result==='W')w++; else if(g.result==='T')t++; else l++; });
   return {w,t,l,played:gl.length};
@@ -793,7 +814,7 @@ function computePowerPoints(){
   const ppGameLog = {}; // for detail view
 
   teams.forEach(t => {
-    const gl = teamGames(t.id);
+    const gl = teamGames(t.id).filter(g => isNumericWeek(g.week)); // Thanksgiving excluded from UPR math
     let total = 0;
     const log = [];
     gl.forEach(g => {
@@ -823,7 +844,7 @@ function computeOSI(lockedSI_floored, finalCat){
   const osiGameLog = {};
 
   teams.forEach(t => {
-    const gl = teamGames(t.id);
+    const gl = teamGames(t.id).filter(g => isNumericWeek(g.week)); // Thanksgiving excluded from UPR math
     const selfIsMultiplier = finalCat[t.id] !== null && finalCat[t.id] !== undefined;
 
     // Identify candidate "bonus" games: this team LOST to a multiplier opponent, and this team itself is non-multiplier.
@@ -916,12 +937,15 @@ function buildEligibilityFilterOptions(selected){
 }
 function getAllWeeksUsed(){
   const weeks = new Set(state.games.map(g=>g.week));
-  return [...weeks].sort((a,b)=>a-b);
+  return [...weeks].sort((a,b)=>weekSortValue(a)-weekSortValue(b));
 }
 function buildWeekFilterOptions(selected){
   const weeks = getAllWeeksUsed();
   const opts = [`<option value="all" ${selected==='all'?'selected':''}>All weeks</option>`];
-  weeks.forEach(w => opts.push(`<option value="${w}" ${String(selected)===String(w)?'selected':''}>Week ${w}</option>`));
+  weeks.forEach(w => {
+    const label = isThanksgiving(w) ? 'Thanksgiving' : ('Week ' + w);
+    opts.push(`<option value="${w}" ${String(selected)===String(w)?'selected':''}>${label}</option>`);
+  });
   return opts.join('');
 }
 function buildSectionFilterOptions(selected){
@@ -969,7 +993,7 @@ function groupKeyFor(teamIds){
 }
 
 function recordVsSet(teamId, oppIdSet){
-  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId));
+  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId) && isNumericWeek(g.week));
   let w=0,l=0,t=0;
   games.forEach(g => { if (g.result==='W') w++; else if (g.result==='T') t++; else l++; });
   const n = w+l+t;
@@ -999,7 +1023,7 @@ function pickNextBest(remaining, originalGroupIds, osiTotal, ppTotal){
 
   // Step 2: Common Opponents — opponents played by EVERY team in `candidates`,
   // excluding anyone who was part of the original tied group (those are "internal").
-  const oppSets = candidates.map(t => new Set(teamGames(t.id).map(g=>g.oppId).filter(id=>!originalGroupIds.has(id))));
+  const oppSets = candidates.map(t => new Set(teamGames(t.id).filter(g=>isNumericWeek(g.week)).map(g=>g.oppId).filter(id=>!originalGroupIds.has(id))));
   let common = oppSets[0] ? new Set(oppSets[0]) : new Set();
   oppSets.slice(1).forEach(s => { common = new Set([...common].filter(id=>s.has(id))); });
   if (common.size){
@@ -1265,7 +1289,7 @@ function computeUPR(sectionFilterKey){
   if (ranked.length > QUALIFY_LIMIT){
     const top16Ids = new Set(top16.map(t=>t.id));
     const candidates = ranked.filter(t => !top16Ids.has(t.id)).filter(t => {
-      const gl = teamGames(t.id);
+      const gl = teamGames(t.id).filter(g => isNumericWeek(g.week)); // Thanksgiving excluded from UPR qualification
       const losses = gl.filter(g=>g.result==='L').length;
       const ties = gl.filter(g=>g.result==='T').length;
       const memberWins = gl.filter(g => {
@@ -1662,7 +1686,7 @@ function renderGamesTab(){
     .filter(g => gamesFilterSection==='all' || !gameBothIneligible(g)) // hide both-ineligible matchups when viewing a specific section
     .filter(g => gameMatchesEligibilityFilter(g, gamesFilterEligibility))
     .filter(g => gameMatchesDivision(g, gamesFilterDivision))
-    .sort((a,b)=> a.week-b.week);
+    .sort((a,b)=> weekSortValue(a.week)-weekSortValue(b.week));
 
   let rows = sorted.map(g => {
     const isTBD = g.scoreA === null || g.scoreB === null;
@@ -1695,7 +1719,7 @@ function renderGamesTab(){
     }
     return `
     <tr>
-      <td class="num">${g.week}</td>
+      <td class="num">${isThanksgiving(g.week)?'TG':g.week}</td>
       <td class="team-name">${teamName(g.teamA)}${teamInfoBadge(g.teamA)}</td>
       ${scoreCell}
       <td class="team-name">${teamName(g.teamB)}${teamInfoBadge(g.teamB)}</td>
@@ -1710,7 +1734,7 @@ function renderGamesTab(){
       <h2>Add game <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
       <p class="hint">Strength Index moves weekly through Week 7 only (frozen after); residual Power Points use each opponent's first 7 games. <strong>Leave both scores blank to schedule a future game with no result yet</strong> — it'll appear as TBD and be open for user predictions until you enter the real result.</p>
       <div class="form-row">
-        <div class="field"><label>Week</label><input type="number" id="gWeek" value="1" min="0" max="11"></div>
+        <div class="field"><label>Week</label><select id="gWeek">${[0,1,2,3,4,5,6,7,8,9,10,11].map(w=>`<option value="${w}" ${w===1?'selected':''}>Week ${w}</option>`).join('')}<option value="Thanksgiving">Thanksgiving</option></select></div>
         <div class="field"><label>Team A</label><select id="gTeamA">${options}</select></div>
         <div class="field"><label>Score A</label><input type="number" id="gScoreA" placeholder="TBD" min="0"></div>
         <div class="field"><label>Team B</label><select id="gTeamB">${options}</select></div>
@@ -1721,7 +1745,7 @@ function renderGamesTab(){
     </div>
     <div class="panel">
       <h2>Bulk Add Games <span style="color:var(--gold); font-size:11px; text-transform:none; letter-spacing:0;">(admin only)</span></h2>
-      <p class="hint">One game per line: <code>week, team A name, team B name</code> — or include scores: <code>week, team A, team B, score A, score B</code>. Leave scores off (or blank) for a TBD game. Works with comma- or tab-separated lines (so pasting straight from a spreadsheet works), and a header row starting with "Week" is ignored automatically. Team names must exactly match an existing team (case-insensitive) — add any missing teams or out-of-state opponents first. Duplicate week+matchup entries are skipped automatically.</p>
+      <p class="hint">One game per line: <code>week, team A name, team B name</code> — or include scores: <code>week, team A, team B, score A, score B</code>. The week can be a number (0–11) or the word <code>Thanksgiving</code> for Thanksgiving games (those count toward overall and divisional records but not toward UPR rankings). Leave scores off (or blank) for a TBD game. Works with comma- or tab-separated lines (so pasting straight from a spreadsheet works), and a header row starting with "Week" is ignored automatically. Team names must exactly match an existing team (case-insensitive) — add any missing teams or out-of-state opponents first. Duplicate week+matchup entries are skipped automatically.</p>
       <textarea id="bulkGamesInput" rows="8" style="width:100%; background:var(--panel-raised); border:1px solid var(--line); color:var(--chalk); border-radius:4px; padding:10px; font-family:'IBM Plex Mono',monospace; font-size:12.5px;" placeholder="0, Old Tappan, Cranford&#10;0, West Morris, Summit, 21, 14"></textarea>
       <div class="form-row" style="margin-top:10px;">
         <button onclick="bulkAddGames()">Add Games from Text</button>
@@ -2132,7 +2156,7 @@ function renderPredictTab(){
     const btnB = `<button class="${pick===g.teamB?'':'ghost'}" style="${pick===g.teamB?'':'background:transparent;'}" onclick="setPrediction('${g.id}','${g.teamB}')">${teamName(g.teamB)} wins</button>`;
     return `
       <tr>
-        <td class="num">${g.week}</td>
+        <td class="num">${isThanksgiving(g.week)?'TG':g.week}</td>
         <td class="team-name">
           ${teamName(g.teamA)}${teamInfoBadge(g.teamA)}
           <div style="margin:4px 0; color:var(--chalk-dim); font-size:11px;">vs</div>
@@ -2524,7 +2548,8 @@ async function removeTeam(id){
 async function addGame(){
   if (!isAdmin) return;
   const errEl = document.getElementById('addGameError');
-  const week = parseInt(document.getElementById('gWeek').value,10);
+  const weekRaw = document.getElementById('gWeek').value;
+  const week = weekRaw === THANKSGIVING ? THANKSGIVING : parseInt(weekRaw,10);
   const teamA = document.getElementById('gTeamA').value;
   const teamB = document.getElementById('gTeamB').value;
   const scoreAraw = document.getElementById('gScoreA').value;
@@ -2787,8 +2812,13 @@ async function bulkAddGames(){
     if (/^week\b/i.test(line)) return; // skip an optional header row
     const fields = (line.includes('\t') ? line.split('\t') : line.split(',')).map(f=>f.trim());
     if (fields.length < 3) { denied.push({line:lineNum, content:line, reason:'needs at least: week, team A, team B'}); return; }
-    const week = parseInt(fields[0], 10);
-    if (isNaN(week)) { denied.push({line:lineNum, content:line, reason:`"${fields[0]}" isn't a valid week number`}); return; }
+    // Week may be a number 0-11, or the literal "Thanksgiving" (case-insensitive).
+    let week;
+    if (/^thanksgiving$/i.test(fields[0])) week = THANKSGIVING;
+    else {
+      week = parseInt(fields[0], 10);
+      if (isNaN(week)) { denied.push({line:lineNum, content:line, reason:`"${fields[0]}" isn't a valid week number (use a number or "Thanksgiving")`}); return; }
+    }
     const teamAId = nameToId[fields[1].toLowerCase()];
     const teamBId = nameToId[fields[2].toLowerCase()];
     if (!teamAId && !teamBId) { denied.push({line:lineNum, content:line, reason:`neither team found: "${fields[1]}" and "${fields[2]}"`}); return; }
