@@ -1269,6 +1269,109 @@ function buildNjicBracket(){
   };
 }
 
+/* ============================== SFC IVY DIVISION PLAYOFF ============================== */
+// The SFC Ivy has 3 divisions (Red, White, Gold). Their playoff ranks the divisions D1/D2/D3
+// by combined record in WEEK 1 crossover games (all Week 1 games involving that division's
+// teams), tie broken by division average Strength Index. Top 2 in each division qualify;
+// six seeds map by (division rank, division finish); a standard 6-team bracket plays Weeks 7-9.
+
+const SFC_CONFERENCE_NAME = 'SFC';
+const IVY_DIVISIONS = ['Ivy Red', 'Ivy White', 'Ivy Gold'];
+
+// Combined Week-1 record for a division (all Week 1 games involving its teams).
+function ivyDivisionWeek1Record(divisionName){
+  const divTeamIds = new Set(state.teams
+    .filter(t => t.conference===SFC_CONFERENCE_NAME && t.division===divisionName && !t.isOutOfState)
+    .map(t=>t.id));
+  let w=0,l=0,t=0;
+  // Look at each Week 1 game once; count it for the division if either team belongs to it.
+  effectiveGames().forEach(g => {
+    if (Number(g.week) !== 1) return;
+    if (g.scoreA===null||g.scoreA===undefined||g.scoreB===null||g.scoreB===undefined) return;
+    [[g.teamA,g.scoreA,g.scoreB],[g.teamB,g.scoreB,g.scoreA]].forEach(([tid,sSelf,sOpp]) => {
+      if (!divTeamIds.has(tid)) return;
+      if (sSelf>sOpp) w++; else if (sSelf===sOpp) t++; else l++;
+    });
+  });
+  const n=w+l+t;
+  return { w, l, t, games:n, pct: n>0 ? (w+0.5*t)/n : 0 };
+}
+
+// Average locked-and-floored Strength Index across a division's teams (tiebreak for D1/D2/D3).
+function ivyDivisionAvgSI(divisionName, lockedFloored){
+  const divTeams = state.teams.filter(t => t.conference===SFC_CONFERENCE_NAME && t.division===divisionName && !t.isOutOfState);
+  if (!divTeams.length) return 0;
+  const sum = divTeams.reduce((acc,t)=> acc + (lockedFloored[t.id] !== undefined ? lockedFloored[t.id] : 20), 0);
+  return sum / divTeams.length;
+}
+
+// Ranks the three Ivy divisions D1 (best) -> D3 by Week-1 crossover record, tie by avg SI.
+// Returns ordered array of { division, record, avgSI, rank }.
+function rankIvyDivisions(){
+  const { lockedSI_floored } = computeStrengthIndex();
+  const rows = IVY_DIVISIONS.map(div => ({
+    division: div,
+    record: ivyDivisionWeek1Record(div),
+    avgSI: ivyDivisionAvgSI(div, lockedSI_floored)
+  }));
+  rows.sort((a,b) => (b.record.pct - a.record.pct) || (b.avgSI - a.avgSI));
+  rows.forEach((r,i) => r.rank = i+1); // 1 => D1, 2 => D2, 3 => D3
+  return rows;
+}
+
+// Returns the top-2 finishers of one Ivy division (regular-season division standings).
+// Each entry is { teams:[...], coPlaced } — teams is a slash-list if genuinely tied.
+function ivyDivisionTop2(divisionName){
+  const rows = computeDivisionStandings(divisionKey(SFC_CONFERENCE_NAME, divisionName));
+  const first = rows.filter(r => r.place === 1).map(r=>r.team);
+  // Second place = the next place value after 1 (place equals 1 + number of first-place teams).
+  const secondPlaceValue = 1 + first.length;
+  const second = rows.filter(r => r.place === secondPlaceValue).map(r=>r.team);
+  return {
+    first: { teams: first, coPlaced: first.length > 1 },
+    second: { teams: second, coPlaced: second.length > 1 }
+  };
+}
+
+// Builds the SFC Ivy playoff seeding + 6-team bracket. Returns null if no Ivy teams.
+function buildIvyBracket(){
+  const ivyTeams = state.teams.filter(t => t.conference===SFC_CONFERENCE_NAME &&
+    IVY_DIVISIONS.includes(t.division) && !t.isOutOfState);
+  if (!ivyTeams.length) return null;
+
+  const divRanks = rankIvyDivisions();               // ordered D1..D3
+  const byRank = {}; divRanks.forEach(r => { byRank[r.rank] = r.division; });
+
+  const top2 = {};
+  IVY_DIVISIONS.forEach(div => { top2[div] = ivyDivisionTop2(div); });
+
+  // Seed map: 1=D1 1st, 2=D2 1st, 3=D3 1st, 4=D3 2nd, 5=D2 2nd, 6=D1 2nd.
+  const seedPlan = [
+    { seed:1, rank:1, finish:'first'  },
+    { seed:2, rank:2, finish:'first'  },
+    { seed:3, rank:3, finish:'first'  },
+    { seed:4, rank:3, finish:'second' },
+    { seed:5, rank:2, finish:'second' },
+    { seed:6, rank:1, finish:'second' }
+  ];
+  const seeds = seedPlan.map(sp => {
+    const division = byRank[sp.rank];
+    const slot = division ? top2[division][sp.finish] : { teams:[], coPlaced:false };
+    return { seed: sp.seed, division, divisionRank: sp.rank, finish: sp.finish,
+             teams: slot.teams, coPlaced: slot.coPlaced };
+  });
+
+  // Standard 6-team bracket: seeds 1 & 2 bye to semis; R1 = 3v6 and 4v5.
+  // Semis: 1 vs winner(4v5); 2 vs winner(3v6). Then final.
+  const bracket = {
+    round1: [ { high:3, low:6 }, { high:4, low:5 } ],
+    semis:  [ { high:1, lowFrom:'4v5' }, { high:2, lowFrom:'3v6' } ]
+  };
+
+  return { divRanks, byRank, seeds, bracket };
+}
+
+
 
 function computeUPR(sectionFilterKey){
   const { lockedSI, lockedSI_floored } = computeStrengthIndex();
@@ -2129,6 +2232,12 @@ function renderStandingsTab(){
     njicHtml = renderNjicBracket();
   }
 
+  // SFC Ivy playoff bracket — shown when viewing All or the SFC conference.
+  let ivyHtml = '';
+  if (selectedStandingsConf === 'all' || selectedStandingsConf === SFC_CONFERENCE_NAME){
+    ivyHtml = renderIvyBracket();
+  }
+
   el.innerHTML = `
     <div class="panel">
       <h2>Conference & Division Standings</h2>
@@ -2139,6 +2248,7 @@ function renderStandingsTab(){
       <p class="hint">Standings count only games between teams in the same division. Ties are broken by head-to-head record among the tied teams; a genuinely circular tie that can't be separated is shown as co-champions. This is fully separate from the UPR / state-playoff system.</p>
     </div>
     ${njicHtml}
+    ${ivyHtml}
     ${shownDivisions.map(divisionBlock).join('')}
   `;
 }
@@ -2187,6 +2297,71 @@ function renderNjicBracket(){
             <div class="bk-team"><span style="color:var(--chalk-dim);">Liberty / Patriot winner</span></div>
           </div>
           <p class="hint" style="margin-top:10px; margin-bottom:0;">The final matchup fills in once semifinal results are entered.</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderIvyBracket(){
+  const iv = buildIvyBracket();
+  if (!iv) return '';
+
+  const seedByNum = {}; iv.seeds.forEach(s => seedByNum[s.seed] = s);
+  const teamLabel = (s) => {
+    if (!s || !s.teams || !s.teams.length){
+      return `<span style="color:var(--chalk-dim);">— no ${s ? escapeHtml(s.division||'') : ''} ${s ? s.finish : ''} yet —</span>`;
+    }
+    const names = s.teams.map(t=>t.name).join(' / ');
+    const tie = s.coPlaced ? ` <span class="tie-flag" style="font-size:9px;">tied</span>` : '';
+    return `<span class="bk-name">${escapeHtml(names)}</span>${tie}`;
+  };
+  const seedRow = (seedNum) => {
+    const s = seedByNum[seedNum];
+    const dTag = s && s.division ? `<span style="font-size:10px; color:var(--chalk-dim); margin-left:6px;">D${s.divisionRank} ${escapeHtml(s.division)} ${s.finish==='first'?'1st':'2nd'}</span>` : '';
+    return `<div class="bk-team"><span class="bk-seed">${seedNum}</span>${teamLabel(s)}${dTag}</div>`;
+  };
+
+  // Division-ranking table (D1/D2/D3 from Week 1 crossovers).
+  const rankRows = iv.divRanks.map(r => `
+    <tr>
+      <td class="rank-num">D${r.rank}</td>
+      <td class="team-name">${escapeHtml(r.division)}</td>
+      <td class="num">${r.record.w}-${r.record.l}${r.record.t?('-'+r.record.t):''}</td>
+      <td class="num">${r.avgSI.toFixed(2)}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="panel" style="border-color:var(--gold-dim);">
+      <h2 style="color:var(--gold);">SFC Ivy Division Playoff</h2>
+      <p class="hint">Division ranking (D1–D3) comes from each division's combined record in Week 1 crossover games (ties broken by division average Strength Index). The top two teams in each division qualify; seeds are assigned D1-1st=1, D2-1st=2, D3-1st=3, D3-2nd=4, D2-2nd=5, D1-1st… D1-2nd=6. A standard six-team bracket plays Weeks 7–9 (seeds 1 & 2 bye to the semifinals).</p>
+
+      <div style="margin-bottom:16px;">
+        <div class="bk-col-title">Division Ranking (Week 1 crossovers)</div>
+        <div class="table-scroll">
+          <table class="results-table">
+            <thead><tr><th>Rank</th><th>Division</th><th class="num">Wk 1 Record</th><th class="num">Avg SI</th></tr></thead>
+            <tbody>${rankRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+        <div class="bk-col" style="min-width:300px;">
+          <div class="bk-col-title">First Round (Week 7)</div>
+          <div class="bk-matchup">${seedRow(3)}${seedRow(6)}</div>
+          <div class="bk-matchup">${seedRow(4)}${seedRow(5)}</div>
+        </div>
+        <div class="bk-col" style="min-width:300px;">
+          <div class="bk-col-title">Semifinals (Week 8)</div>
+          <div class="bk-matchup">${seedRow(1)}<div class="bk-team"><span class="bk-seed">—</span><span style="color:var(--chalk-dim);">4/5 winner</span></div></div>
+          <div class="bk-matchup">${seedRow(2)}<div class="bk-team"><span class="bk-seed">—</span><span style="color:var(--chalk-dim);">3/6 winner</span></div></div>
+        </div>
+        <div class="bk-col" style="min-width:260px;">
+          <div class="bk-col-title">Final (Week 9)</div>
+          <div class="bk-matchup">
+            <div class="bk-team"><span style="color:var(--chalk-dim);">Semifinal 1 winner</span></div>
+            <div class="bk-team"><span style="color:var(--chalk-dim);">Semifinal 2 winner</span></div>
+          </div>
         </div>
       </div>
     </div>`;
