@@ -577,11 +577,13 @@ function dbGameToLocal(row){
   // those to numbers so week math works; keep 'Thanksgiving' as its string.
   let week = row.week;
   if (week !== null && week !== undefined && !isThanksgiving(week) && !isNaN(Number(week))) week = Number(week);
-  return { id: row.id, week, teamA: row.team_a, teamB: row.team_b, scoreA: row.score_a, scoreB: row.score_b };
+  return { id: row.id, week, teamA: row.team_a, teamB: row.team_b, scoreA: row.score_a, scoreB: row.score_b,
+           njicRound: row.njic_round || null };
 }
 function localGameToDb(g){
   // Store week as text (column is text). Numbers serialize fine; 'Thanksgiving' passes through.
-  return { id: g.id, week: String(g.week), team_a: g.teamA, team_b: g.teamB, score_a: g.scoreA, score_b: g.scoreB };
+  return { id: g.id, week: String(g.week), team_a: g.teamA, team_b: g.teamB, score_a: g.scoreA, score_b: g.scoreB,
+           njic_round: g.njicRound || null };
 }
 
 /* ============================== PERSISTENCE (Supabase) ============================== */
@@ -1134,7 +1136,8 @@ function getAllDivisions(){
 // Win/loss record for teamId against a specific set of opponent ids (uses effectiveGames
 // via teamGames, so predictions are included). Only completed/predicted games count.
 function divRecordVs(teamId, oppIdSet){
-  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId));
+  // Exclude NJIC playoff games — those are postseason, not part of the division round-robin.
+  const games = teamGames(teamId).filter(g => oppIdSet.has(g.oppId) && !g.njicRound);
   let w=0,l=0,t=0;
   games.forEach(g => { if (g.result==='W') w++; else if (g.result==='T') t++; else l++; });
   const n = w+l+t;
@@ -1204,6 +1207,68 @@ function computeDivisionStandings(divKey){
   });
   return rows;
 }
+
+/* ============================== NJIC CONFERENCE PLAYOFF ============================== */
+// The NJIC crowns a conference champion via a 4-team bracket of its division champions.
+// Semifinals: Colonial champ vs Meadowlands champ, Liberty champ vs Patriot champ.
+// Final: the two semifinal winners. This is projected from predicted division standings.
+
+const NJIC_CONFERENCE_NAME = 'NJIC';
+const NJIC_DIVISIONS = ['Colonial', 'Meadowlands', 'Liberty', 'Patriot'];
+// Home-team rotation for the semifinals (this year: Meadowlands & Patriot champs host).
+// To flip next year, change this to ['Colonial', 'Liberty'].
+const NJIC_HOME_DIVISIONS_THIS_YEAR = ['Meadowlands', 'Patriot'];
+
+// Returns the champion of one NJIC division: { teams:[...], resolvedBy, stillTied, missing }.
+// Resolution for a tied division lead: head-to-head among the tied teams, then statewide UPR
+// (lower score = better). If still tied, returns all tied teams (real world uses defensive
+// points allowed, which we can't project).
+function njicDivisionChampion(divisionName, uprScoreMap){
+  const divKey = divisionKey(NJIC_CONFERENCE_NAME, divisionName);
+  const rows = computeDivisionStandings(divKey);
+  if (!rows.length) return { teams: [], resolvedBy: null, stillTied: false, missing: true };
+
+  const leaders = rows.filter(r => r.place === 1).map(r => r.team);
+  if (leaders.length === 1) return { teams: leaders, resolvedBy: 'record', stillTied: false };
+
+  // Tie → head-to-head among the tied leaders (mini round-robin), take the top tier.
+  const tiers = orderByMiniRoundRobin(leaders.map(t=>t.id));
+  const topTierIds = tiers[0];
+  if (topTierIds.length === 1){
+    return { teams: [state.teams.find(t=>t.id===topTierIds[0])], resolvedBy: 'head-to-head', stillTied: false };
+  }
+
+  // Still tied → statewide UPR (lower score is better). Unranked (ineligible) treated as worst.
+  const withUpr = topTierIds.map(id => ({ id, upr: (uprScoreMap[id] !== undefined ? uprScoreMap[id] : Infinity) }));
+  const bestUpr = Math.min(...withUpr.map(x=>x.upr));
+  const uprWinners = withUpr.filter(x => Math.abs(x.upr - bestUpr) < 1e-9 && x.upr !== Infinity);
+  if (uprWinners.length === 1){
+    return { teams: [state.teams.find(t=>t.id===uprWinners[0].id)], resolvedBy: 'UPR', stillTied: false };
+  }
+
+  // Genuinely unresolved (would go to defensive points allowed in reality).
+  return { teams: topTierIds.map(id=>state.teams.find(t=>t.id===id)), resolvedBy: 'points-allowed', stillTied: true };
+}
+
+// Builds the full NJIC bracket projection. Returns null if the NJIC conference has no teams.
+function buildNjicBracket(){
+  const njicTeams = state.teams.filter(t => t.conference === NJIC_CONFERENCE_NAME && !t.isOutOfState);
+  if (!njicTeams.length) return null;
+
+  const uprScoreMap = computeUPR(null).uprScore; // statewide UPR for the tiebreak
+  const champs = {};
+  NJIC_DIVISIONS.forEach(div => { champs[div] = njicDivisionChampion(div, uprScoreMap); });
+
+  return {
+    champs,
+    // home/away per this year's rotation (Meadowlands & Patriot host).
+    semis: [
+      { away: 'Colonial', home: 'Meadowlands' },
+      { away: 'Liberty', home: 'Patriot' }
+    ]
+  };
+}
+
 
 function computeUPR(sectionFilterKey){
   const { lockedSI, lockedSI_floored } = computeStrengthIndex();
@@ -1417,6 +1482,12 @@ function teamName(id){
 // 'TIE' sentinel becomes "Tie".
 function pickLabel(pick){
   return pick === 'TIE' ? 'Tie' : teamName(pick);
+}
+// Small gold tag for NJIC playoff games.
+function njicRoundTag(g){
+  if (!g || !g.njicRound) return '';
+  const label = g.njicRound === 'final' ? 'NJIC Final' : 'NJIC Semifinal';
+  return `<span class="jump-tag" style="color:var(--gold); border-color:var(--gold-dim); margin-left:4px;">${label}</span>`;
 }
 
 function teamInfoBadge(id){
@@ -1720,7 +1791,7 @@ function renderGamesTab(){
     return `
     <tr>
       <td class="num">${isThanksgiving(g.week)?'TG':g.week}</td>
-      <td class="team-name">${teamName(g.teamA)}${teamInfoBadge(g.teamA)}</td>
+      <td class="team-name">${teamName(g.teamA)}${njicRoundTag(g)}${teamInfoBadge(g.teamA)}</td>
       ${scoreCell}
       <td class="team-name">${teamName(g.teamB)}${teamInfoBadge(g.teamB)}</td>
       ${isAdmin ? `<td class="center"><button class="danger" onclick="removeGame('${g.id}')">Remove</button></td>` : ''}
@@ -1739,6 +1810,7 @@ function renderGamesTab(){
         <div class="field"><label>Score A</label><input type="number" id="gScoreA" placeholder="TBD" min="0"></div>
         <div class="field"><label>Team B</label><select id="gTeamB">${options}</select></div>
         <div class="field"><label>Score B</label><input type="number" id="gScoreB" placeholder="TBD" min="0"></div>
+        <div class="field"><label>NJIC tag</label><select id="gNjicRound"><option value="">— none —</option><option value="semi">NJIC Semifinal</option><option value="final">NJIC Final</option></select></div>
         <button onclick="addGame()">Add game</button>
       </div>
       <div id="addGameError" style="display:none; color:var(--red); font-size:12px; margin-top:6px;"></div>
@@ -2051,6 +2123,12 @@ function renderStandingsTab(){
       </div>`;
   };
 
+  // NJIC conference playoff bracket — shown when viewing All or the NJIC conference.
+  let njicHtml = '';
+  if (selectedStandingsConf === 'all' || selectedStandingsConf === NJIC_CONFERENCE_NAME){
+    njicHtml = renderNjicBracket();
+  }
+
   el.innerHTML = `
     <div class="panel">
       <h2>Conference & Division Standings</h2>
@@ -2060,8 +2138,58 @@ function renderStandingsTab(){
       ${projNote}
       <p class="hint">Standings count only games between teams in the same division. Ties are broken by head-to-head record among the tied teams; a genuinely circular tie that can't be separated is shown as co-champions. This is fully separate from the UPR / state-playoff system.</p>
     </div>
+    ${njicHtml}
     ${shownDivisions.map(divisionBlock).join('')}
   `;
+}
+
+function renderNjicBracket(){
+  const bracket = buildNjicBracket();
+  if (!bracket) return '';
+
+  // Render one team slot: single champ, a slash of unresolved co-champs, or "none yet".
+  const champSlot = (divisionName) => {
+    const c = bracket.champs[divisionName];
+    const isHome = bracket.semis.some(s => s.home === divisionName);
+    const homeTag = isHome ? ` <span class="jump-tag" style="font-size:9px; color:var(--turf-bright);">home</span>` : '';
+    if (!c || c.missing || !c.teams.length){
+      return `<div class="bk-team"><span style="color:var(--chalk-dim);">— no ${escapeHtml(divisionName)} champ yet —</span><span style="font-size:10px; color:var(--chalk-dim); margin-left:6px;">${escapeHtml(divisionName)}</span>${homeTag}</div>`;
+    }
+    const names = c.teams.map(t=>t.name).join(' / ');
+    const tieNote = c.stillTied
+      ? ` <span class="tie-flag" title="Head-to-head and UPR could not separate these teams. In reality the NJIC uses defensive points allowed, which can't be projected here.">tied — pts allowed decides</span>`
+      : '';
+    const byNote = (c.resolvedBy === 'head-to-head') ? ` <span class="jump-tag" style="font-size:9px;">via H2H</span>`
+                 : (c.resolvedBy === 'UPR') ? ` <span class="jump-tag" style="font-size:9px;">via UPR</span>`
+                 : '';
+    return `<div class="bk-team"><span class="bk-name">${escapeHtml(names)}</span><span style="font-size:10px; color:var(--chalk-dim); margin-left:6px;">${escapeHtml(divisionName)}</span>${homeTag}${byNote}${tieNote}</div>`;
+  };
+
+  const semiBlock = (semi) => `
+    <div class="bk-matchup" style="min-width:280px;">
+      ${champSlot(semi.away)}
+      ${champSlot(semi.home)}
+    </div>`;
+
+  return `
+    <div class="panel" style="border-color:var(--gold-dim);">
+      <h2 style="color:var(--gold);">NJIC Conference Playoff</h2>
+      <p class="hint">Projected from current division standings. The four division champions meet in a two-round bracket: <strong>Colonial vs Meadowlands</strong> and <strong>Liberty vs Patriot</strong> in the semifinals (Week 7), winners meet in the final (Week 8). Home team is by yearly rotation — this year Meadowlands and Patriot host their semifinals. Division champs are decided by division record, then head-to-head, then UPR; if still tied, the real NJIC uses defensive points allowed (shown here as a tie until you enter actual scores).</p>
+      <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+        <div class="bk-col" style="min-width:290px;">
+          <div class="bk-col-title">Semifinals</div>
+          ${bracket.semis.map(semiBlock).join('')}
+        </div>
+        <div class="bk-col" style="min-width:290px;">
+          <div class="bk-col-title">Final</div>
+          <div class="bk-matchup" style="min-width:280px;">
+            <div class="bk-team"><span style="color:var(--chalk-dim);">Colonial / Meadowlands winner</span></div>
+            <div class="bk-team"><span style="color:var(--chalk-dim);">Liberty / Patriot winner</span></div>
+          </div>
+          <p class="hint" style="margin-top:10px; margin-bottom:0;">The final matchup fills in once semifinal results are entered.</p>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderDetailTab(){
@@ -2557,7 +2685,9 @@ async function addGame(){
   const scoreA = scoreAraw === '' ? null : parseInt(scoreAraw,10);
   const scoreB = scoreBraw === '' ? null : parseInt(scoreBraw,10);
   if (teamA===teamB) { if(errEl){errEl.textContent='Team A and Team B must be different.'; errEl.style.display='block';} return; }
-  const newGame = {id: uid('g'), week, teamA, teamB, scoreA, scoreB};
+  const njicRoundEl = document.getElementById('gNjicRound');
+  const njicRound = njicRoundEl && njicRoundEl.value ? njicRoundEl.value : null;
+  const newGame = {id: uid('g'), week, teamA, teamB, scoreA, scoreB, njicRound};
   state.games.push(newGame);
   renderAll();
   const { error } = await sb.from('games').insert(localGameToDb(newGame));
