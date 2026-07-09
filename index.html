@@ -1321,8 +1321,74 @@ function rankIvyDivisions(){
 
 // Returns the top-2 finishers of one Ivy division (regular-season division standings).
 // Each entry is { teams:[...], coPlaced } — teams is a slash-list if genuinely tied.
+// Separates a tied group of team ids using the Ivy-specific chain that runs AFTER head-to-head:
+// UPR (lower better) -> OSI (higher better) -> Power Points (higher better). Returns an array
+// of tiers (each tier = ids still tied after all three). uprData = computeUPR(null).
+function ivyBreakTie(tiedIds, uprData){
+  if (tiedIds.length <= 1) return [tiedIds];
+  const cmp = (a, b) => {
+    const ua = uprData.uprScore[a], ub = uprData.uprScore[b];
+    const uaV = (ua===undefined?Infinity:ua), ubV = (ub===undefined?Infinity:ub);
+    if (Math.abs(uaV - ubV) > 1e-9) return uaV - ubV;              // UPR: lower is better
+    const oa = uprData.osiTotal[a]||0, ob = uprData.osiTotal[b]||0;
+    if (Math.abs(oa - ob) > 1e-9) return ob - oa;                  // OSI: higher is better
+    const pa = uprData.ppTotal[a]||0, pb = uprData.ppTotal[b]||0;
+    if (Math.abs(pa - pb) > 1e-9) return pb - pa;                  // Power Points: higher is better
+    return 0;                                                       // truly identical
+  };
+  const sorted = [...tiedIds].sort(cmp);
+  // Group consecutive ids that compare equal (all three metrics tied) into co-placed tiers.
+  const tiers = [];
+  let cur = [sorted[0]];
+  for (let i=1;i<sorted.length;i++){
+    if (cmp(sorted[i-1], sorted[i]) === 0) cur.push(sorted[i]);
+    else { tiers.push(cur); cur = [sorted[i]]; }
+  }
+  tiers.push(cur);
+  return tiers;
+}
+
+// Ivy-specific division standings: same as computeDivisionStandings, but any tier still tied
+// after record + head-to-head is further separated by UPR -> OSI -> Power Points.
+function ivyDivisionStandings(divisionName){
+  const divKey = divisionKey(SFC_CONFERENCE_NAME, divisionName);
+  const baseRows = computeDivisionStandings(divKey); // record + head-to-head applied
+  const uprData = computeUPR(null);
+
+  // Re-expand base rows into tiers (consecutive rows sharing a place value are one tier).
+  const tiers = [];
+  let i = 0;
+  while (i < baseRows.length){
+    const place = baseRows[i].place;
+    const group = [];
+    while (i < baseRows.length && baseRows[i].place === place){ group.push(baseRows[i]); i++; }
+    tiers.push(group);
+  }
+
+  // For any multi-team tier, apply the Ivy extended tiebreak.
+  const finalRows = [];
+  let place = 1;
+  tiers.forEach(tier => {
+    if (tier.length === 1){
+      finalRows.push({ ...tier[0], place, coPlaced:false });
+      place += 1;
+      return;
+    }
+    const subTiers = ivyBreakTie(tier.map(r=>r.team.id), uprData);
+    subTiers.forEach(sub => {
+      const coPlaced = sub.length > 1;
+      sub.forEach(id => {
+        const base = tier.find(r=>r.team.id===id);
+        finalRows.push({ ...base, place, coPlaced });
+      });
+      place += sub.length;
+    });
+  });
+  return finalRows;
+}
+
 function ivyDivisionTop2(divisionName){
-  const rows = computeDivisionStandings(divisionKey(SFC_CONFERENCE_NAME, divisionName));
+  const rows = ivyDivisionStandings(divisionName);
   const first = rows.filter(r => r.place === 1).map(r=>r.team);
   // Second place = the next place value after 1 (place equals 1 + number of first-place teams).
   const secondPlaceValue = 1 + first.length;
@@ -2333,7 +2399,8 @@ function renderIvyBracket(){
   return `
     <div class="panel" style="border-color:var(--gold-dim);">
       <h2 style="color:var(--gold);">SFC Ivy Division Playoff</h2>
-      <p class="hint">Division ranking (D1–D3) comes from each division's combined record in Week 1 crossover games (ties broken by division average Strength Index). The top two teams in each division qualify; seeds are assigned D1-1st=1, D2-1st=2, D3-1st=3, D3-2nd=4, D2-2nd=5, D1-1st… D1-2nd=6. A standard six-team bracket plays Weeks 7–9 (seeds 1 & 2 bye to the semifinals).</p>
+      <p class="hint">Division ranking (D1–D3) comes from each division's combined record in Week 1 crossover games (ties broken by division average Strength Index). The top two teams in each division qualify; seeds are assigned D1-1st=1, D2-1st=2, D3-1st=3, D3-2nd=4, D2-2nd=5, D1-2nd=6. A standard six-team bracket plays Weeks 7–9 (seeds 1 & 2 bye to the semifinals).</p>
+      <p class="hint" style="border-left:3px solid var(--gold-dim); padding-left:10px;"><strong>Tiebreaker note:</strong> to decide the top two within a division, this app breaks ties by division record, then head-to-head, then UPR, then OSI, then Power Points. This is our own procedure for projecting seeds and may not match the actual tiebreaker process the SFC uses.</p>
 
       <div style="margin-bottom:16px;">
         <div class="bk-col-title">Division Ranking (Week 1 crossovers)</div>
